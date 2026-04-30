@@ -38,10 +38,10 @@
           </label>
 
           <div id="dropZone" class="drop-zone full-width" role="button" tabindex="0" aria-label="העלאת קובץ תמלול">
-            <p>גררו ושחררו קובץ תמלול כאן (TXT בלבד)</p>
+            <p>גררו ושחררו קובץ תמלול כאן (TXT או DOCX)</p>
             <p class="muted">או</p>
             <label class="upload-btn" for="fileInput">בחרו קובץ</label>
-            <input id="fileInput" type="file" accept=".txt,text/plain" hidden />
+            <input id="fileInput" type="file" accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden />
             <p id="uploadStatus" class="upload-status">לא נבחר קובץ</p>
           </div>
 
@@ -77,6 +77,7 @@
               <h3>סיכונים</h3>
               <div class="risk-row">
                 <span id="riskBadge" class="risk-badge">נמוך</span>
+                <span id="confidenceBadge" class="confidence-badge">רמת ביטחון: נמוכה</span>
               </div>
               <ul id="riskList"></ul>
             </article>
@@ -94,8 +95,14 @@
             </article>
 
             <article class="card full-span">
+              <h3>ניתוח מפורט</h3>
+              <div id="sectionsList" class="sections-grid"></div>
+            </article>
+
+            <article class="card full-span">
               <h3>מייל המשך</h3>
               <p id="followupEmail"></p>
+              <p id="analysisNote" class="muted"></p>
               <button class="ghost" id="copyEmailBtn" type="button">העתק מייל המשך</button>
             </article>
           </div>
@@ -103,6 +110,7 @@
       </section>
     </main>
 
+    <script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
     <script src="./app.js" type="module"></script>
   </body>
 </html>
