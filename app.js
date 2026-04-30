@@ -9,9 +9,12 @@ const dashboard = document.getElementById('dashboard');
 const summaryCards = document.getElementById('summaryCards');
 const summaryText = document.getElementById('summaryText');
 const riskBadge = document.getElementById('riskBadge');
+const confidenceBadge = document.getElementById('confidenceBadge');
+const analysisNote = document.getElementById('analysisNote');
 const riskList = document.getElementById('riskList');
 const taskFilters = document.getElementById('taskFilters');
 const taskList = document.getElementById('taskList');
+const sectionsList = document.getElementById('sectionsList');
 const followupEmail = document.getElementById('followupEmail');
 const copySummaryBtn = document.getElementById('copySummaryBtn');
 const copyEmailBtn = document.getElementById('copyEmailBtn');
@@ -21,235 +24,205 @@ const dropZone = document.getElementById('dropZone');
 const uploadStatus = document.getElementById('uploadStatus');
 
 let state = { tasks: [], filter: 'הכל', lastAnalysis: null };
-
-const ownerLabels = ['אני', 'לקוח', 'תמיכה', 'פיתוח'];
 const filters = ['הכל', 'שלי', 'לקוח', 'תמיכה/פיתוח', 'פתוחות בלבד'];
 
-function extractMetadata(text) {
-  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
-  const topChunk = lines.slice(0, 20).join(' | ');
-  const companyMatch = topChunk.match(/(?:חברה|לקוח|Client|Company)[:\-]?\s*([^|,\n]+)/i);
-  const dateMatch = text.match(/\b(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b/);
-  const timeMatch = text.match(/\b([01]?\d|2[0-3]):[0-5]\d\b/);
-  const durationMatch = text.match(/(?:משך|duration)[:\-]?\s*(\d+\s*(?:דקות|שעות|minutes|hours))/i);
-  const topicMatch = topChunk.match(/(?:נושא|כותרת|Title|Topic)[:\-]?\s*([^|\n]+)/i);
+const taskTriggers = [/צריך לבדוק/, /אני אבדוק/, /נבדוק/, /אברר/, /אשאל/, /אעביר לפיתוח/, /נשלח/, /נקבע/, /צריך לקבוע/, /נמשיך בפגישה הבאה/, /לפתוח קריאה/, /לטפל/, /לעדכן/, /לשלוח/, /לחזור אליכם/, /להוסיף/, /לתקן/, /לבדוק מול פיתוח/, /לבדוק מול תמיכה/];
 
-  const nameRegex = /(?:^|\s)([א-ת]{2,}\s[א-ת]{2,})(?=\s|$)/g;
+const isQuestion = (s) => /\?|מה |איך |למה |מתי |האם |אפשר|ניתן/.test(s);
+const speakerLine = /^([A-Za-zא-ת'".\- ]{2,})\s+(\d{1,2}:\d{2})$/;
+
+function splitSentences(text) {
+  return text
+    .split(/\n+/)
+    .flatMap((line) => line.split(/[.!?]/))
+    .map((s) => s.trim())
+    .filter((s) => s.length > 5 && !speakerLine.test(s));
+}
+
+function extractMetadata(text) {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const top = lines.slice(0, 20).join(' | ');
+
   const participants = new Set();
-  for (const line of lines.slice(0, 40)) {
-    const hits = [...line.matchAll(nameRegex)];
-    hits.forEach((hit) => {
-      const name = hit[1].trim();
-      if (name.length >= 4 && participants.size < 8) participants.add(name);
-    });
+  for (const line of lines) {
+    const match = line.match(speakerLine);
+    if (match) participants.add(match[1].trim());
   }
 
-  return {
-    company: companyMatch?.[1]?.trim() || document.getElementById('clientName').value.trim() || 'לא זוהה',
-    date: dateMatch?.[1] || document.getElementById('meetingDate').value || 'לא זוהה',
-    time: timeMatch?.[0] || 'לא זוהה',
-    participants: participants.size ? [...participants] : ['לא זוהו'],
-    topic: topicMatch?.[1]?.trim() || 'פגישת עבודה שוטפת',
-    duration: durationMatch?.[1] || 'לא צוין'
-  };
+  const company = top.match(/(?:חברה|לקוח|Client|Company)[:\-]?\s*([^|,\n]+)/i)?.[1]?.trim() || document.getElementById('clientName').value.trim() || 'לא זוהה';
+  const date = text.match(/\b(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b/)?.[1] || document.getElementById('meetingDate').value || 'לא זוהה';
+  const time = text.match(/\b([01]?\d|2[0-3]):[0-5]\d\b/)?.[0] || 'לא זוהה';
+  const duration = text.match(/(?:משך|duration)[:\-]?\s*(\d+\s*(?:דקות|שעות|minutes|hours))/i)?.[1] || `${Math.max(30, Math.round(lines.length / 6))} דקות (משוער)`;
+  const topic = lines[0]?.length > 6 ? lines[0].slice(0, 90) : top.match(/(?:נושא|כותרת|Title|Topic)[:\-]?\s*([^|\n]+)/i)?.[1]?.trim() || 'פגישת עבודה';
+
+  const trainer = [...participants].find((name) => /support|מדריך|תמיכה|mida/i.test(name)) || 'לא זוהה';
+
+  return { company, date, time, duration, topic, participants: participants.size ? [...participants] : ['לא זוהו'], trainer };
+}
+
+function classifyOwner(sentence) {
+  if (/(אני|אבדוק|אשאל|אעביר|אשלח)/.test(sentence)) return 'אני';
+  if (/(פיתוח|תקלה|שרת|דירוג לא עובד)/.test(sentence)) return 'פיתוח/תמיכה';
+  if (/(אתם|תנסו|תשלחו|תקבעו|תבדקו אצלכם)/.test(sentence)) return 'לקוח';
+  return 'אני';
+}
+
+function classifyPriority(sentence) {
+  if (/(תקלה|לא עובד|נתקע|דחוף|פיתוח|לא מצליח)/.test(sentence)) return 'גבוהה';
+  if (/(לבדוק|לקבוע|לשלוח|לעדכן)/.test(sentence)) return 'בינונית';
+  return 'נמוכה';
 }
 
 function extractTasks(text) {
-  const candidateLines = text.split('\n').map((line) => line.trim()).filter((line) => line.length > 8);
-  const taskLines = candidateLines.filter((line) => /(צריך|נדרש|לבצע|משימה|todo|action|להכין|לעדכן)/i.test(line)).slice(0, 12);
-  const source = taskLines.length ? taskLines : [
-    'צריך להכין סיכום סטטוס שבועי ללקוח.',
-    'נדרש לתאם בדיקות המשך עם צוות הפיתוח.',
-    'הלקוח יעביר מסמכי דרישות מעודכנים.',
-    'יש לבצע בדיקת ביצועים בסביבת התמיכה.'
-  ];
-
-  return source.map((line, index) => {
-    const lower = line.toLowerCase();
-    const owner = lower.includes('לקוח') ? 'לקוח' : lower.includes('תמיכה') ? 'תמיכה' : lower.includes('פיתוח') ? 'פיתוח' : 'אני';
-    const priority = lower.includes('דחוף') || lower.includes('מידי') ? 'גבוהה' : lower.includes('בהמשך') ? 'נמוכה' : 'בינונית';
-    return { id: `task-${index}`, title: line.replace(/^[•\-\d.)\s]+/, ''), owner, priority, done: false };
+  const sentences = splitSentences(text);
+  const tasks = [];
+  sentences.forEach((sentence, index) => {
+    if (isQuestion(sentence)) return;
+    if (!taskTriggers.some((re) => re.test(sentence))) return;
+    tasks.push({
+      id: `task-${index}`,
+      title: sentence,
+      owner: classifyOwner(sentence),
+      priority: classifyPriority(sentence),
+      done: false
+    });
   });
+  return tasks;
 }
 
-function analyzeRisk(tasks, text) {
-  const riskyHints = (text.match(/(עיכוב|סיכון|דחייה|תקלה|חסם|escalation)/gi) || []).length;
-  const highCount = tasks.filter((task) => task.priority === 'גבוהה').length;
-  const score = riskyHints + highCount;
-  if (score >= 4) return 'גבוה';
-  if (score >= 2) return 'בינוני';
-  return 'נמוך';
+function buildSections(text, tasks) {
+  const sentences = splitSentences(text);
+  const clientQuestions = sentences.filter((s) => isQuestion(s));
+  const issues = sentences.filter((s) => /(לא עובד|תקלה|איטיות|נתקע|שלחתי לפיתוח)/.test(s));
+  const followUp = tasks.filter((t) => /נקבע|פגישה הבאה|הדרכה נוספת|לקבוע עוד הדרכה|דוחות/.test(t.title));
+  const decisions = sentences.filter((s) => /(הוחלט|נסכם|נסגר|סיכמנו|נקבע)/.test(s));
+
+  if (/דירוג.*AI.*לא עובד|AI.*דירוג.*לא/.test(text)) {
+    issues.unshift('דירוג ה-AI לא הוצג בזמן ההדרכה ונדרש לבדוק מול פיתוח/תמיכה.');
+  }
+
+  const risks = [];
+  if (issues.length) risks.push('קיימות תקלות פתוחות שעשויות לעכב הטמעה.');
+  if (followUp.length) risks.push('נדרש תיאום המשך כדי לוודא אימוץ מלא של התהליך.');
+  if (!tasks.length) risks.push('לא זוהו משימות ברורות ולכן ייתכן חוסר המשכיות.');
+
+  return {
+    executiveSummary: `זוהו ${tasks.length} משימות אמיתיות, ${clientQuestions.length} שאלות לקוח ו-${issues.length} בעיות/תקלות מרכזיות.`,
+    objective: sentences.find((s) => /(מטרת|מטרה|הדרכה|סקירה|הטמעה)/.test(s)) || 'מטרת הפגישה לא צוינה במפורש, אך התוכן מצביע על הדרכה ותיאום המשך.',
+    trainedTopics: sentences.filter((s) => /(הדרכה|הסברתי|הודגם|הצגנו|דוחות|מערכת)/.test(s)).slice(0, 6),
+    clientQuestions: clientQuestions.slice(0, 8),
+    issues: issues.slice(0, 8),
+    decisions: decisions.slice(0, 6),
+    realTasks: tasks,
+    followUpTasks: followUp,
+    risks,
+  };
 }
 
 function renderMetadata(metadata) {
   const fields = [
-    ['חברה/לקוח', metadata.company],
-    ['תאריך', metadata.date],
-    ['שעה', metadata.time],
-    ['משך', metadata.duration],
-    ['נושא', metadata.topic],
-    ['משתתפים', metadata.participants.join(', ')],
+    ['חברה/לקוח', metadata.company], ['תאריך', metadata.date], ['שעה', metadata.time], ['משך', metadata.duration], ['נושא', metadata.topic], ['משתתפים', metadata.participants.join(', ')], ['מדריך/תמיכה', metadata.trainer],
   ];
-
-  metadataContent.innerHTML = fields
-    .map(([label, value]) => `<div class="metadata-item"><span>${label}</span><strong>${value}</strong></div>`)
-    .join('');
+  metadataContent.innerHTML = fields.map(([label, value]) => `<div class="metadata-item"><span>${label}</span><strong>${value}</strong></div>`).join('');
   metadataCard.classList.remove('hidden');
 }
 
-function getFilteredTasks() {
-  const { tasks, filter } = state;
-  if (filter === 'הכל') return tasks;
-  if (filter === 'שלי') return tasks.filter((task) => task.owner === 'אני');
-  if (filter === 'לקוח') return tasks.filter((task) => task.owner === 'לקוח');
-  if (filter === 'תמיכה/פיתוח') return tasks.filter((task) => ['תמיכה', 'פיתוח'].includes(task.owner));
-  if (filter === 'פתוחות בלבד') return tasks.filter((task) => !task.done);
-  return tasks;
-}
+function getFilteredTasks() { const { tasks, filter } = state; if (filter === 'הכל') return tasks; if (filter === 'שלי') return tasks.filter((t) => t.owner === 'אני'); if (filter === 'לקוח') return tasks.filter((t) => t.owner === 'לקוח'); if (filter === 'תמיכה/פיתוח') return tasks.filter((t) => t.owner === 'פיתוח/תמיכה'); if (filter === 'פתוחות בלבד') return tasks.filter((t) => !t.done); return tasks; }
+function renderTaskFilters() { taskFilters.innerHTML = filters.map((f) => `<button type="button" data-filter="${f}" class="filter-btn ${state.filter === f ? 'active' : ''}">${f}</button>`).join(''); }
+function renderTasks() { taskList.innerHTML = getFilteredTasks().map((task) => `<li class="task-item ${task.done ? 'done' : ''}"><input type="checkbox" data-id="${task.id}" ${task.done ? 'checked' : ''} /><span>${task.title}</span><span class="tag">${task.owner}</span><span class="tag">${task.priority}</span></li>`).join(''); }
 
-function renderTaskFilters() {
-  taskFilters.innerHTML = filters.map((filter) => `<button type="button" data-filter="${filter}" class="filter-btn ${state.filter === filter ? 'active' : ''}">${filter}</button>`).join('');
-}
-
-function renderTasks() {
-  const filtered = getFilteredTasks();
-  taskList.innerHTML = filtered.map((task) => `
-    <li class="task-item ${task.done ? 'done' : ''}">
-      <input type="checkbox" data-id="${task.id}" ${task.done ? 'checked' : ''} />
-      <span>${task.title}</span>
-      <span class="tag">${task.owner}</span>
-      <span class="tag">${task.priority}</span>
-    </li>
-  `).join('');
-}
-
-function renderSummary(analysis) {
-  const openTasks = analysis.tasks.filter((task) => !task.done).length;
-  const summaries = [
-    ['מספר משימות', analysis.tasks.length],
-    ['משימות פתוחות', openTasks],
-    ['סיכונים', analysis.riskLevel],
-    ['משתתפים', analysis.metadata.participants.length],
+function renderSections(analysis) {
+  const sectionRows = [
+    ['מטרת הפגישה', [analysis.sections.objective]],
+    ['נושאים שהודרכו', analysis.sections.trainedTopics],
+    ['שאלות לקוח', analysis.sections.clientQuestions],
+    ['בעיות/תקלות שעלו', analysis.sections.issues],
+    ['החלטות שהתקבלו', analysis.sections.decisions],
+    ['משימות לפגישת המשך', analysis.sections.followUpTasks.map((t) => t.title)],
+    ['סיכונים', analysis.sections.risks],
   ];
-
-  summaryCards.innerHTML = summaries.map(([title, value]) => `<article class="summary-card"><span>${title}</span><strong>${value}</strong></article>`).join('');
+  sectionsList.innerHTML = sectionRows.map(([title, items]) => `<article class="section-block"><h4>${title}</h4><ul>${(items.length ? items : ['לא זוהה']).map((i) => `<li>${i}</li>`).join('')}</ul></article>`).join('');
 }
 
 function renderAnalysis(analysis) {
-  summaryText.textContent = analysis.summary;
-  riskList.innerHTML = analysis.risks.map((risk) => `<li>• ${risk}</li>`).join('');
+  summaryText.textContent = analysis.sections.executiveSummary;
+  riskList.innerHTML = analysis.sections.risks.map((risk) => `<li>• ${risk}</li>`).join('');
   followupEmail.textContent = analysis.email;
   riskBadge.textContent = analysis.riskLevel;
-  riskBadge.className = `risk-badge ${analysis.riskLevel === 'גבוה' ? 'high' : analysis.riskLevel === 'בינוני' ? 'medium' : ''}`;
-
-  renderSummary(analysis);
-  renderTaskFilters();
-  renderTasks();
-  emptyState.classList.add('hidden');
-  dashboard.classList.remove('hidden');
+  confidenceBadge.textContent = analysis.confidence;
+  analysisNote.textContent = 'זהו ניתוח מקומי ראשוני. ניתוח AI מלא יתווסף בשלב הבא.';
+  renderSections(analysis);
+  renderTaskFilters(); renderTasks();
+  emptyState.classList.add('hidden'); dashboard.classList.remove('hidden');
 }
 
 function createAnalysis(metadata, transcript) {
   const tasks = extractTasks(transcript);
-  const riskLevel = analyzeRisk(tasks, transcript);
-  const risks = [
-    'פערי ציפיות מול הלקוח עלולים לעכב החלטות.',
-    'תלות בצוותים נוספים עלולה לדחות מסירה.',
-    'ללא מעקב שבועי קיים סיכון לירידת שקיפות.'
-  ];
-
-  return {
-    metadata,
-    tasks,
-    riskLevel,
-    risks,
-    summary: `בפגישה בנושא "${metadata.topic}" עם ${metadata.company}, הוגדרו ${tasks.length} משימות אופרטיביות ונקבעו בעלי אחריות להמשך.`,
-    email: `שלום ${metadata.company},\n\nתודה על הפגישה. ריכזנו את עיקרי הסיכום והמשימות להמשך.\nנשמח לאישור ותיאום נקודת מעקב נוספת.\n\nבברכה,`
-  };
+  const sections = buildSections(transcript, tasks);
+  const issueCount = sections.issues.length;
+  const riskLevel = issueCount > 2 ? 'גבוה' : issueCount > 0 ? 'בינוני' : 'נמוך';
+  const confidence = tasks.length >= 3 ? 'גבוהה' : tasks.length >= 1 ? 'בינונית' : 'נמוכה';
+  return { metadata, tasks, sections, riskLevel, confidence, email: `שלום ${metadata.company},\n\nתודה על הפגישה. להלן סיכום קצר:\n- משימות אמיתיות: ${tasks.length}\n- שאלות לקוח: ${sections.clientQuestions.length}\n- תקלות פתוחות: ${sections.issues.length}\n\nנשמח לתאם המשך לפי הצורך.\n\nבברכה,` };
 }
 
-async function copyText(text) {
-  if (!text) return;
-  await navigator.clipboard.writeText(text);
-}
+async function copyText(text) { if (text) await navigator.clipboard.writeText(text); }
 
-function handleFile(file) {
+async function handleFile(file) {
   if (!file) return;
-  if (!file.name.toLowerCase().endsWith('.txt')) {
-    uploadStatus.textContent = 'ניתן להעלות כרגע רק קבצי TXT.';
+  const ext = file.name.toLowerCase();
+
+  if (ext.endsWith('.txt')) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      transcriptEl.value = String(reader.result || '').trim();
+      uploadStatus.textContent = `נטען: ${file.name} | סוג: TXT`;
+      renderMetadata(extractMetadata(transcriptEl.value));
+    };
+    reader.readAsText(file, 'utf-8');
     return;
   }
 
-  const reader = new FileReader();
-  reader.onload = () => {
-    transcriptEl.value = String(reader.result || '').trim();
-    uploadStatus.textContent = `נטען: ${file.name}`;
-    const metadata = extractMetadata(transcriptEl.value);
-    renderMetadata(metadata);
-  };
-  reader.readAsText(file, 'utf-8');
+  if (ext.endsWith('.docx')) {
+    try {
+      if (!window.mammoth) throw new Error('mammoth missing');
+      const data = await file.arrayBuffer();
+      const result = await window.mammoth.extractRawText({ arrayBuffer: data });
+      transcriptEl.value = String(result.value || '').trim();
+      uploadStatus.textContent = `נטען: ${file.name} | סוג: DOCX`;
+      renderMetadata(extractMetadata(transcriptEl.value));
+    } catch {
+      uploadStatus.textContent = 'שגיאה בקריאת קובץ DOCX. נסו קובץ אחר או שמרו מחדש את המסמך.';
+    }
+    return;
+  }
+
+  uploadStatus.textContent = 'ניתן להעלות רק קבצי TXT או DOCX.';
 }
 
-fileInput.addEventListener('change', (event) => handleFile(event.target.files[0]));
-['dragenter', 'dragover'].forEach((eventName) => dropZone.addEventListener(eventName, (event) => {
-  event.preventDefault();
-  dropZone.classList.add('active');
-}));
-['dragleave', 'drop'].forEach((eventName) => dropZone.addEventListener(eventName, (event) => {
-  event.preventDefault();
-  dropZone.classList.remove('active');
-}));
-dropZone.addEventListener('drop', (event) => handleFile(event.dataTransfer.files[0]));
-dropZone.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' || event.key === ' ') fileInput.click();
-});
+fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+['dragenter', 'dragover'].forEach((ev) => dropZone.addEventListener(ev, (e) => { e.preventDefault(); dropZone.classList.add('active'); }));
+['dragleave', 'drop'].forEach((ev) => dropZone.addEventListener(ev, (e) => { e.preventDefault(); dropZone.classList.remove('active'); }));
+dropZone.addEventListener('drop', (e) => handleFile(e.dataTransfer.files[0]));
+dropZone.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
 dropZone.addEventListener('click', () => fileInput.click());
-
-form.addEventListener('submit', (event) => {
-  event.preventDefault();
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
   const transcript = transcriptEl.value.trim();
   if (!transcript) return;
-
   const metadata = extractMetadata(transcript);
   renderMetadata(metadata);
-
-  analyzeBtn.disabled = true;
-  analyzeBtn.textContent = 'מנתח...';
-
+  analyzeBtn.disabled = true; analyzeBtn.textContent = 'מנתח...';
   setTimeout(() => {
     const analysis = createAnalysis(metadata, transcript);
-    state.tasks = analysis.tasks;
-    state.filter = 'הכל';
-    state.lastAnalysis = analysis;
+    state.tasks = analysis.tasks; state.filter = 'הכל'; state.lastAnalysis = analysis;
     renderAnalysis(analysis);
-    analyzeBtn.disabled = false;
-    analyzeBtn.textContent = 'נתח פגישה';
-  }, 900);
+    analyzeBtn.disabled = false; analyzeBtn.textContent = 'נתח פגישה';
+  }, 500);
 });
 
-taskFilters.addEventListener('click', (event) => {
-  const button = event.target.closest('button[data-filter]');
-  if (!button) return;
-  state.filter = button.dataset.filter;
-  renderTaskFilters();
-  renderTasks();
-});
-
-taskList.addEventListener('change', (event) => {
-  const checkbox = event.target.closest('input[type="checkbox"]');
-  if (!checkbox) return;
-  const task = state.tasks.find((item) => item.id === checkbox.dataset.id);
-  if (!task) return;
-  task.done = checkbox.checked;
-  if (state.lastAnalysis) renderSummary({ ...state.lastAnalysis, tasks: state.tasks });
-  renderTasks();
-});
-
+taskFilters.addEventListener('click', (e) => { const b = e.target.closest('button[data-filter]'); if (!b) return; state.filter = b.dataset.filter; renderTaskFilters(); renderTasks(); });
+taskList.addEventListener('change', (e) => { const c = e.target.closest('input[type="checkbox"]'); if (!c) return; const task = state.tasks.find((t) => t.id === c.dataset.id); if (!task) return; task.done = c.checked; renderTasks(); });
 copySummaryBtn.addEventListener('click', () => copyText(summaryText.textContent));
 copyEmailBtn.addEventListener('click', () => copyText(followupEmail.textContent));
-copyTasksBtn.addEventListener('click', () => {
-  const text = state.tasks.map((task) => `- [${task.done ? 'x' : ' '}] ${task.title} | ${task.owner} | ${task.priority}`).join('\n');
-  copyText(text);
-});
-
+copyTasksBtn.addEventListener('click', () => copyText(state.tasks.map((t) => `- [${t.done ? 'x' : ' '}] ${t.title} | ${t.owner} | ${t.priority}`).join('\n')));
 resultSection.classList.remove('hidden');
