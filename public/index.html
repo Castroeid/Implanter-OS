@@ -7,46 +7,45 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <header>
-      <h1>Implanter OS</h1>
-      <p>ניתוח תמלילי פגישות והפיכתם לעבודה מובנית</p>
-    </header>
-
-    <main>
+    <main class="container">
       <section class="panel">
-        <h2>פגישה חדשה</h2>
-        <form id="meeting-form">
-          <div class="grid">
-            <label>שם לקוח<input required id="clientName" /></label>
-            <label>תאריך פגישה<input required id="meetingDate" type="date" /></label>
-            <label>סוג פגישה<input required id="meetingType" placeholder="לדוגמה: Weekly Sync" /></label>
-          </div>
+        <h1>Implanter OS</h1>
+        <p class="subtitle">ניתוח פגישות והפיכתן לתוכנית עבודה ברורה</p>
 
-          <label>תמליל פגישה
-            <textarea required id="transcript" rows="8" placeholder="הדביקו תמליל או הערות פגישה..."></textarea>
+        <form id="meeting-form" class="form-grid">
+          <label>
+            שם לקוח
+            <input id="clientName" type="text" required />
           </label>
-          <button id="analyzeBtn" type="submit">ניתוח עם OpenAI</button>
+
+          <label>
+            תאריך פגישה
+            <input id="meetingDate" type="date" required />
+          </label>
+
+          <label>
+            סוג פגישה
+            <select id="meetingType" required>
+              <option value="" disabled selected>בחרו סוג פגישה</option>
+              <option value="הדרכה">הדרכה</option>
+              <option value="תמיכה">תמיכה</option>
+              <option value="אפיון">אפיון</option>
+              <option value="המשך">המשך</option>
+            </select>
+          </label>
+
+          <label class="full-width">
+            תמליל פגישה
+            <textarea id="transcript" rows="9" required placeholder="הדביקו כאן את תמליל הפגישה..."></textarea>
+          </label>
+
+          <button id="analyzeBtn" type="submit">נתח פגישה</button>
         </form>
       </section>
 
-      <section class="panel">
-        <h2>פילטרים</h2>
-        <div class="grid filters">
-          <input id="filterClient" placeholder="סינון לפי לקוח" />
-          <select id="filterStatus"><option value="">כל הסטטוסים</option></select>
-          <select id="filterRisk"><option value="">כל רמות הסיכון</option><option>Low</option><option>Medium</option><option>High</option></select>
-          <select id="filterOwner"><option value="">כל בעלי התפקיד</option><option>Implementer</option><option>Client</option><option>Support/Development</option></select>
-        </div>
-      </section>
-
-      <section class="panel">
-        <h2>דאשבורד פגישות</h2>
-        <div id="meetingCards" class="cards"></div>
-      </section>
-
-      <section class="panel">
-        <h2>רשימת משימות</h2>
-        <div id="taskList" class="tasks"></div>
+      <section id="results" class="panel hidden" aria-live="polite">
+        <h2>תוצאות ניתוח</h2>
+        <div class="cards" id="resultCards"></div>
       </section>
     </main>
 
