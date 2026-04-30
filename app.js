@@ -26,17 +26,58 @@ const uploadStatus = document.getElementById('uploadStatus');
 let state = { tasks: [], filter: 'הכל', lastAnalysis: null };
 const filters = ['הכל', 'שלי', 'לקוח', 'תמיכה/פיתוח', 'פתוחות בלבד'];
 
-const taskTriggers = [/צריך לבדוק/, /אני אבדוק/, /נבדוק/, /אברר/, /אשאל/, /אעביר לפיתוח/, /נשלח/, /נקבע/, /צריך לקבוע/, /נמשיך בפגישה הבאה/, /לפתוח קריאה/, /לטפל/, /לעדכן/, /לשלוח/, /לחזור אליכם/, /להוסיף/, /לתקן/, /לבדוק מול פיתוח/, /לבדוק מול תמיכה/];
+const speakerLine = /^([A-Za-zא-ת'".\- ]{2,})\s+(\d{1,2}:\d{2})$/;
+const commitmentRegex = /(אני|אנחנו|נבצע|אבצע|אבדוק|נבדוק|אעדכן|נעדכן|נשלח|אשלח|נקבע|נתאם|נחליט|נפתח|אפתח|נטפל|אעביר|נעביר|אסגור|נסגור|אחזור|נחזור)/;
+const issueRegex = /(לא עובד|תקלה|נתקע|איטי)/;
 
 const isQuestion = (s) => /\?|מה |איך |למה |מתי |האם |אפשר|ניתן/.test(s);
-const speakerLine = /^([A-Za-zא-ת'".\- ]{2,})\s+(\d{1,2}:\d{2})$/;
 
-function splitSentences(text) {
-  return text
-    .split(/\n+/)
-    .flatMap((line) => line.split(/[.!?]/))
+function splitIntoSpeakerBlocks(text) {
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+  const blocks = [];
+  let current = { speaker: 'לא ידוע', text: [] };
+
+  lines.forEach((line) => {
+    const m = line.match(/^([^:]{2,40}):\s*(.+)$/);
+    if (m) {
+      if (current.text.length) blocks.push({ ...current, text: current.text.join(' ') });
+      current = { speaker: m[1].trim(), text: [m[2].trim()] };
+      return;
+    }
+
+    const metaSpeaker = line.match(speakerLine);
+    if (metaSpeaker) {
+      if (current.text.length) blocks.push({ ...current, text: current.text.join(' ') });
+      current = { speaker: metaSpeaker[1].trim(), text: [] };
+      return;
+    }
+
+    current.text.push(line);
+  });
+
+  if (current.text.length) blocks.push({ ...current, text: current.text.join(' ') });
+  return blocks.filter((b) => b.text.length > 4);
+}
+
+function classifyRole(speaker) {
+  if (/(support|trainer|מדריך|תמיכה|יישום|implementer)/i.test(speaker)) return 'Support / trainer';
+  return 'Client';
+}
+
+function splitSentencesFromBlocks(blocks) {
+  return blocks.flatMap((block) => block.text
+    .split(/(?<=[.!?])\s+|\n+/)
     .map((s) => s.trim())
-    .filter((s) => s.length > 5 && !speakerLine.test(s));
+    .filter((s) => s.length > 5)
+    .map((sentence) => ({ sentence, speaker: block.speaker, role: classifyRole(block.speaker) })));
+}
+
+function classifySentenceType(sentence) {
+  if (issueRegex.test(sentence)) return 'בעיה';
+  if (isQuestion(sentence)) return 'שאלה';
+  if (/(צריך|אפשר|תבקשו|תשלחו|תעדכנו|נא )/.test(sentence)) return 'בקשה';
+  if (/(נבצע|אבצע|אבדוק|נעדכן|נשלח|נקבע|נפתח|נטפל|אעביר|לתקן|לבדוק|להגדיר|לשלוח)/.test(sentence)) return 'פעולה';
+  return 'הסבר';
 }
 
 function extractMetadata(text) {
@@ -47,6 +88,8 @@ function extractMetadata(text) {
   for (const line of lines) {
     const match = line.match(speakerLine);
     if (match) participants.add(match[1].trim());
+    const colonMatch = line.match(/^([^:]{2,40}):/);
+    if (colonMatch) participants.add(colonMatch[1].trim());
   }
 
   const company = top.match(/(?:חברה|לקוח|Client|Company)[:\-]?\s*([^|,\n]+)/i)?.[1]?.trim() || document.getElementById('clientName').value.trim() || 'לא זוהה';
@@ -55,16 +98,15 @@ function extractMetadata(text) {
   const duration = text.match(/(?:משך|duration)[:\-]?\s*(\d+\s*(?:דקות|שעות|minutes|hours))/i)?.[1] || `${Math.max(30, Math.round(lines.length / 6))} דקות (משוער)`;
   const topic = lines[0]?.length > 6 ? lines[0].slice(0, 90) : top.match(/(?:נושא|כותרת|Title|Topic)[:\-]?\s*([^|\n]+)/i)?.[1]?.trim() || 'פגישת עבודה';
 
-  const trainer = [...participants].find((name) => /support|מדריך|תמיכה|mida/i.test(name)) || 'לא זוהה';
+  const trainer = [...participants].find((name) => /support|מדריך|תמיכה|mida|trainer/i.test(name)) || 'לא זוהה';
 
   return { company, date, time, duration, topic, participants: participants.size ? [...participants] : ['לא זוהו'], trainer };
 }
 
-function classifyOwner(sentence) {
-  if (/(אני|אבדוק|אשאל|אעביר|אשלח)/.test(sentence)) return 'אני';
-  if (/(פיתוח|תקלה|שרת|דירוג לא עובד)/.test(sentence)) return 'פיתוח/תמיכה';
-  if (/(אתם|תנסו|תשלחו|תקבעו|תבדקו אצלכם)/.test(sentence)) return 'לקוח';
-  return 'אני';
+function classifyOwner(sentence, role) {
+  if (role === 'Support / trainer' || /(אני|נבדוק|אבדוק|נעביר|אעביר)/.test(sentence)) return 'אני';
+  if (/(פיתוח|שרת|api|באג|תקלה)/i.test(sentence)) return 'פיתוח/תמיכה';
+  return 'לקוח';
 }
 
 function classifyPriority(sentence) {
@@ -73,60 +115,74 @@ function classifyPriority(sentence) {
   return 'נמוכה';
 }
 
-function extractTasks(text) {
-  const sentences = splitSentences(text);
-  const tasks = [];
-  sentences.forEach((sentence, index) => {
-    if (isQuestion(sentence)) return;
-    if (!taskTriggers.some((re) => re.test(sentence))) return;
-    tasks.push({
-      id: `task-${index}`,
-      title: sentence,
-      owner: classifyOwner(sentence),
-      priority: classifyPriority(sentence),
-      done: false
-    });
+function extractStructuredAnalysis(text) {
+  const blocks = splitIntoSpeakerBlocks(text);
+  const entries = splitSentencesFromBlocks(blocks).map((entry, idx) => ({ ...entry, id: `s-${idx}`, type: classifySentenceType(entry.sentence) }));
+
+  const objective = entries.slice(0, 10).find((e) => /(מטרה|מטרת|היום נעבור|נעבור על|הדרכה|סקירה|הטמעה)/.test(e.sentence))?.sentence
+    || 'מטרת הפגישה זוהתה כהדרכה ותיאום המשך סביב תהליך ההטמעה.';
+
+  const explanationLines = entries.filter((e) => e.type === 'הסבר');
+  const topicBuckets = new Map();
+  explanationLines.forEach((line) => {
+    const key = line.sentence.split(' ').slice(0, 4).join(' ');
+    if (!topicBuckets.has(key)) topicBuckets.set(key, []);
+    topicBuckets.get(key).push(line.sentence);
   });
-  return tasks;
-}
 
-function buildSections(text, tasks) {
-  const sentences = splitSentences(text);
-  const clientQuestions = sentences.filter((s) => isQuestion(s));
-  const issues = sentences.filter((s) => /(לא עובד|תקלה|איטיות|נתקע|שלחתי לפיתוח)/.test(s));
-  const followUp = tasks.filter((t) => /נקבע|פגישה הבאה|הדרכה נוספת|לקבוע עוד הדרכה|דוחות/.test(t.title));
-  const decisions = sentences.filter((s) => /(הוחלט|נסכם|נסגר|סיכמנו|נקבע)/.test(s));
+  const mainTopics = [...topicBuckets.values()].map((group) => group[0]).slice(0, 6);
+  const clientQuestions = entries.filter((e) => e.role === 'Client' && e.type === 'שאלה').map((e) => e.sentence).slice(0, 8);
+  const issues = entries.filter((e) => issueRegex.test(e.sentence)).map((e) => e.sentence).slice(0, 8);
+  const decisions = entries.filter((e) => /(סיכמנו|נחליט|נקבע)/.test(e.sentence)).map((e) => e.sentence).slice(0, 6);
 
-  if (/דירוג.*AI.*לא עובד|AI.*דירוג.*לא/.test(text)) {
-    issues.unshift('דירוג ה-AI לא הוצג בזמן ההדרכה ונדרש לבדוק מול פיתוח/תמיכה.');
-  }
+  const actionable = entries.filter((e) => e.type === 'פעולה' || commitmentRegex.test(e.sentence));
+  const deduped = [];
+  const seen = new Set();
+  actionable.forEach((e) => {
+    const key = e.sentence.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(e);
+    }
+  });
+
+  const limitedTasks = deduped.slice(0, 8).map((e, i) => ({
+    id: `task-${i}`,
+    title: e.sentence,
+    owner: classifyOwner(e.sentence, e.role),
+    priority: classifyPriority(e.sentence),
+    done: false
+  }));
+
+  const devTasks = issues
+    .filter((s) => /(לא עובד|תקלה|נתקע|איטי)/.test(s))
+    .slice(0, 5)
+    .map((s) => `לטפל בבעיה: ${s}`);
+
+  const summaryParagraph = `בפגישה הוגדרה מטרה ברורה סביב ${objective}. במהלך השיחה עלו ${mainTopics.length} נושאים מרכזיים, נשאלו ${clientQuestions.length} שאלות מצד הלקוח, וזוהו ${issues.length} בעיות הדורשות התייחסות. בנוסף התקבלו ${decisions.length} החלטות והוגדרו ${limitedTasks.length} משימות ישימות להמשך עבודה.`;
 
   const risks = [];
-  if (issues.length) risks.push('קיימות תקלות פתוחות שעשויות לעכב הטמעה.');
-  if (followUp.length) risks.push('נדרש תיאום המשך כדי לוודא אימוץ מלא של התהליך.');
-  if (!tasks.length) risks.push('לא זוהו משימות ברורות ולכן ייתכן חוסר המשכיות.');
+  if (issues.length) risks.push('קיימות תקלות פתוחות שעשויות לעכב את ההטמעה.');
+  if (!limitedTasks.length) risks.push('לא זוהו פעולות מחייבות ולכן קיים סיכון לחוסר המשכיות.');
 
   return {
-    executiveSummary: `זוהו ${tasks.length} משימות אמיתיות, ${clientQuestions.length} שאלות לקוח ו-${issues.length} בעיות/תקלות מרכזיות.`,
-    objective: sentences.find((s) => /(מטרת|מטרה|הדרכה|סקירה|הטמעה)/.test(s)) || 'מטרת הפגישה לא צוינה במפורש, אך התוכן מצביע על הדרכה ותיאום המשך.',
-    trainedTopics: sentences.filter((s) => /(הדרכה|הסברתי|הודגם|הצגנו|דוחות|מערכת)/.test(s)).slice(0, 6),
-    clientQuestions: clientQuestions.slice(0, 8),
-    issues: issues.slice(0, 8),
-    decisions: decisions.slice(0, 6),
-    realTasks: tasks,
-    followUpTasks: followUp,
-    risks,
+    tasks: limitedTasks,
+    sections: {
+      executiveSummary: summaryParagraph,
+      objective,
+      trainedTopics: mainTopics,
+      clientQuestions,
+      issues,
+      decisions,
+      realTasks: limitedTasks,
+      followUpTasks: limitedTasks.filter((t) => /נקבע|נתאם|פגישה/.test(t.title)),
+      developmentTasks: devTasks,
+      risks,
+    }
   };
 }
 
-function renderMetadata(metadata) {
-  const fields = [
-    ['חברה/לקוח', metadata.company], ['תאריך', metadata.date], ['שעה', metadata.time], ['משך', metadata.duration], ['נושא', metadata.topic], ['משתתפים', metadata.participants.join(', ')], ['מדריך/תמיכה', metadata.trainer],
-  ];
-  metadataContent.innerHTML = fields.map(([label, value]) => `<div class="metadata-item"><span>${label}</span><strong>${value}</strong></div>`).join('');
-  metadataCard.classList.remove('hidden');
-}
-
+function renderMetadata(metadata) { const fields = [ ['חברה/לקוח', metadata.company], ['תאריך', metadata.date], ['שעה', metadata.time], ['משך', metadata.duration], ['נושא', metadata.topic], ['משתתפים', metadata.participants.join(', ')], ['מדריך/תמיכה', metadata.trainer], ]; metadataContent.innerHTML = fields.map(([label, value]) => `<div class="metadata-item"><span>${label}</span><strong>${value}</strong></div>`).join(''); metadataCard.classList.remove('hidden'); }
 function getFilteredTasks() { const { tasks, filter } = state; if (filter === 'הכל') return tasks; if (filter === 'שלי') return tasks.filter((t) => t.owner === 'אני'); if (filter === 'לקוח') return tasks.filter((t) => t.owner === 'לקוח'); if (filter === 'תמיכה/פיתוח') return tasks.filter((t) => t.owner === 'פיתוח/תמיכה'); if (filter === 'פתוחות בלבד') return tasks.filter((t) => !t.done); return tasks; }
 function renderTaskFilters() { taskFilters.innerHTML = filters.map((f) => `<button type="button" data-filter="${f}" class="filter-btn ${state.filter === f ? 'active' : ''}">${f}</button>`).join(''); }
 function renderTasks() { taskList.innerHTML = getFilteredTasks().map((task) => `<li class="task-item ${task.done ? 'done' : ''}"><input type="checkbox" data-id="${task.id}" ${task.done ? 'checked' : ''} /><span>${task.title}</span><span class="tag">${task.owner}</span><span class="tag">${task.priority}</span></li>`).join(''); }
@@ -134,11 +190,12 @@ function renderTasks() { taskList.innerHTML = getFilteredTasks().map((task) => `
 function renderSections(analysis) {
   const sectionRows = [
     ['מטרת הפגישה', [analysis.sections.objective]],
-    ['נושאים שהודרכו', analysis.sections.trainedTopics],
+    ['נושאים מרכזיים', analysis.sections.trainedTopics],
     ['שאלות לקוח', analysis.sections.clientQuestions],
-    ['בעיות/תקלות שעלו', analysis.sections.issues],
-    ['החלטות שהתקבלו', analysis.sections.decisions],
-    ['משימות לפגישת המשך', analysis.sections.followUpTasks.map((t) => t.title)],
+    ['בעיות', analysis.sections.issues],
+    ['החלטות', analysis.sections.decisions],
+    ['משימות', analysis.sections.realTasks.map((t) => t.title)],
+    ['משימות לפיתוח', analysis.sections.developmentTasks],
     ['סיכונים', analysis.sections.risks],
   ];
   sectionsList.innerHTML = sectionRows.map(([title, items]) => `<article class="section-block"><h4>${title}</h4><ul>${(items.length ? items : ['לא זוהה']).map((i) => `<li>${i}</li>`).join('')}</ul></article>`).join('');
@@ -150,19 +207,25 @@ function renderAnalysis(analysis) {
   followupEmail.textContent = analysis.email;
   riskBadge.textContent = analysis.riskLevel;
   confidenceBadge.textContent = analysis.confidence;
-  analysisNote.textContent = 'זהו ניתוח מקומי ראשוני. ניתוח AI מלא יתווסף בשלב הבא.';
+  analysisNote.textContent = 'זהו ניתוח מקומי מובנה מבוסס כוונה ותפקידי דוברים.';
   renderSections(analysis);
   renderTaskFilters(); renderTasks();
   emptyState.classList.add('hidden'); dashboard.classList.remove('hidden');
 }
 
 function createAnalysis(metadata, transcript) {
-  const tasks = extractTasks(transcript);
-  const sections = buildSections(transcript, tasks);
-  const issueCount = sections.issues.length;
+  const structured = extractStructuredAnalysis(transcript);
+  const issueCount = structured.sections.issues.length;
   const riskLevel = issueCount > 2 ? 'גבוה' : issueCount > 0 ? 'בינוני' : 'נמוך';
-  const confidence = tasks.length >= 3 ? 'גבוהה' : tasks.length >= 1 ? 'בינונית' : 'נמוכה';
-  return { metadata, tasks, sections, riskLevel, confidence, email: `שלום ${metadata.company},\n\nתודה על הפגישה. להלן סיכום קצר:\n- משימות אמיתיות: ${tasks.length}\n- שאלות לקוח: ${sections.clientQuestions.length}\n- תקלות פתוחות: ${sections.issues.length}\n\nנשמח לתאם המשך לפי הצורך.\n\nבברכה,` };
+  const confidence = structured.tasks.length >= 3 ? 'גבוהה' : structured.tasks.length >= 1 ? 'בינונית' : 'נמוכה';
+  return {
+    metadata,
+    tasks: structured.tasks,
+    sections: structured.sections,
+    riskLevel,
+    confidence,
+    email: `שלום ${metadata.company},\n\nתודה על הפגישה. סיכום מובנה: ${structured.sections.executiveSummary}\n\nנשמח לתאם המשך לפי הצורך.\n\nבברכה,`
+  };
 }
 
 async function copyText(text) { if (text) await navigator.clipboard.writeText(text); }
