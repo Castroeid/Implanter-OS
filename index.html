@@ -8,25 +8,28 @@
   </head>
   <body>
     <main class="container">
-      <section class="panel">
+      <header class="panel hero">
         <h1>Implanter OS</h1>
-        <p class="subtitle">ניתוח פגישות והפיכתן לתוכנית עבודה ברורה</p>
+        <p class="subtitle">דשבורד ניתוח פגישות חכם (MVP)</p>
+      </header>
 
+      <section class="panel" aria-labelledby="input-title">
+        <h2 id="input-title">קלט פגישה</h2>
         <form id="meeting-form" class="form-grid">
           <label>
             שם לקוח
-            <input id="clientName" type="text" required />
+            <input id="clientName" type="text" placeholder="לדוגמה: חברת אלפא" />
           </label>
 
           <label>
             תאריך פגישה
-            <input id="meetingDate" type="date" required />
+            <input id="meetingDate" type="date" />
           </label>
 
           <label>
             סוג פגישה
-            <select id="meetingType" required>
-              <option value="" disabled selected>בחרו סוג פגישה</option>
+            <select id="meetingType">
+              <option value="" selected>בחרו סוג פגישה</option>
               <option value="הדרכה">הדרכה</option>
               <option value="תמיכה">תמיכה</option>
               <option value="אפיון">אפיון</option>
@@ -34,18 +37,69 @@
             </select>
           </label>
 
+          <div id="dropZone" class="drop-zone full-width" role="button" tabindex="0" aria-label="העלאת קובץ תמלול">
+            <p>גררו ושחררו קובץ תמלול כאן (TXT בלבד)</p>
+            <p class="muted">או</p>
+            <label class="upload-btn" for="fileInput">בחרו קובץ</label>
+            <input id="fileInput" type="file" accept=".txt,text/plain" hidden />
+            <p id="uploadStatus" class="upload-status">לא נבחר קובץ</p>
+          </div>
+
           <label class="full-width">
             תמליל פגישה
-            <textarea id="transcript" rows="9" required placeholder="הדביקו כאן את תמליל הפגישה..."></textarea>
+            <textarea id="transcript" rows="11" placeholder="הדביקו כאן את תמליל הפגישה או העלו קובץ..."></textarea>
           </label>
+
+          <article id="metadataCard" class="card metadata-card full-width hidden" aria-live="polite">
+            <h3>פרטי פגישה שזוהו</h3>
+            <div id="metadataContent" class="metadata-grid"></div>
+          </article>
 
           <button id="analyzeBtn" type="submit">נתח פגישה</button>
         </form>
       </section>
 
-      <section id="results" class="panel hidden" aria-live="polite">
+      <section id="results" class="panel" aria-live="polite">
         <h2>תוצאות ניתוח</h2>
-        <div class="cards" id="resultCards"></div>
+        <div id="emptyState" class="empty-state">עדיין לא בוצע ניתוח. העלו תמליל ולחצו "נתח פגישה".</div>
+
+        <div id="dashboard" class="hidden">
+          <div id="summaryCards" class="summary-grid"></div>
+
+          <div class="analysis-grid">
+            <article class="card">
+              <h3>סיכום מנהלים</h3>
+              <p id="summaryText"></p>
+              <button class="ghost" id="copySummaryBtn" type="button">העתק סיכום</button>
+            </article>
+
+            <article class="card">
+              <h3>סיכונים</h3>
+              <div class="risk-row">
+                <span id="riskBadge" class="risk-badge">נמוך</span>
+              </div>
+              <ul id="riskList"></ul>
+            </article>
+
+            <article class="card full-span">
+              <div class="task-header">
+                <h3>משימות</h3>
+                <div class="task-actions">
+                  <button class="ghost" id="copyTasksBtn" type="button">העתק משימות</button>
+                  <button class="ghost" type="button" disabled>ייצוא לאקסל - בקרוב</button>
+                </div>
+              </div>
+              <div id="taskFilters" class="filters"></div>
+              <ul id="taskList" class="tasks"></ul>
+            </article>
+
+            <article class="card full-span">
+              <h3>מייל המשך</h3>
+              <p id="followupEmail"></p>
+              <button class="ghost" id="copyEmailBtn" type="button">העתק מייל המשך</button>
+            </article>
+          </div>
+        </div>
       </section>
     </main>
 
