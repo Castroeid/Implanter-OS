@@ -1,0 +1,16 @@
+:root { font-family: Arial, sans-serif; color-scheme: light; }
+body { margin: 0; background: #f3f6fb; color: #1a2b3b; }
+header { background: #102a43; color: white; padding: 1rem 1.5rem; }
+main { padding: 1rem; max-width: 1200px; margin: auto; display: grid; gap: 1rem; }
+.panel { background: white; border-radius: 12px; padding: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+.grid { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); }
+label { display: flex; flex-direction: column; gap: .3rem; font-weight: 600; }
+input, select, textarea, button { font: inherit; padding: .55rem; border: 1px solid #ccd6e0; border-radius: 8px; }
+button { background: #2f6fed; color: white; border: none; cursor: pointer; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap: .75rem; }
+.card, .task { border: 1px solid #d8e1eb; border-radius: 10px; padding: .8rem; background: #fcfdff; }
+.badges { display: flex; flex-wrap: wrap; gap: .35rem; }
+.badge { padding: .1rem .5rem; border-radius: 99px; background: #e7edf5; font-size: .8rem; }
+.summary { white-space: pre-wrap; font-size: .93rem; }
+.task { display: grid; gap: .2rem; }
+@media (max-width: 700px) { header h1 { margin: 0 0 .25rem; } }

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Implanter OS</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Implanter OS</h1>
+      <p>ניתוח תמלילי פגישות והפיכתם לעבודה מובנית</p>
+    </header>
+
+    <main>
+      <section class="panel">
+        <h2>פגישה חדשה</h2>
+        <form id="meeting-form">
+          <div class="grid">
+            <label>שם לקוח<input required id="clientName" /></label>
+            <label>תאריך פגישה<input required id="meetingDate" type="date" /></label>
+            <label>סוג פגישה<input required id="meetingType" placeholder="לדוגמה: Weekly Sync" /></label>
+          </div>
+
+          <label>תמליל פגישה
+            <textarea required id="transcript" rows="8" placeholder="הדביקו תמליל או הערות פגישה..."></textarea>
+          </label>
+          <button id="analyzeBtn" type="submit">ניתוח עם OpenAI</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>פילטרים</h2>
+        <div class="grid filters">
+          <input id="filterClient" placeholder="סינון לפי לקוח" />
+          <select id="filterStatus"><option value="">כל הסטטוסים</option></select>
+          <select id="filterRisk"><option value="">כל רמות הסיכון</option><option>Low</option><option>Medium</option><option>High</option></select>
+          <select id="filterOwner"><option value="">כל בעלי התפקיד</option><option>Implementer</option><option>Client</option><option>Support/Development</option></select>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>דאשבורד פגישות</h2>
+        <div id="meetingCards" class="cards"></div>
+      </section>
+
+      <section class="panel">
+        <h2>רשימת משימות</h2>
+        <div id="taskList" class="tasks"></div>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
