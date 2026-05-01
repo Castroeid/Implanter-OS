@@ -27,10 +27,10 @@ let state = { tasks: [], filter: 'הכל', lastAnalysis: null };
 const filters = ['הכל', 'שלי', 'לקוח', 'תמיכה/פיתוח', 'פתוחות בלבד'];
 
 const speakerLine = /^([A-Za-zא-ת'".\- ]{2,})\s+(\d{1,2}:\d{2})$/;
-const commitmentRegex = /(אני|אנחנו|נבצע|אבצע|אבדוק|נבדוק|אעדכן|נעדכן|נשלח|אשלח|נקבע|נתאם|נחליט|נפתח|אפתח|נטפל|אעביר|נעביר|אסגור|נסגור|אחזור|נחזור)/;
-const issueRegex = /(לא עובד|תקלה|נתקע|איטי)/;
+const commitmentRegex = /(נבצע|אבצע|אבדוק|נבדוק|אעדכן|נעדכן|נשלח|אשלח|נקבע|נתאם|נחליט|נפתח|אפתח|נטפל|אעביר|נעביר|אסגור|נסגור|אחזור|נחזור)/;
+const issueRegex = /(לא עובד|תקלה|נתקע|איטי|איטית|איטיות)/;
 
-const isQuestion = (s) => /\?|מה |איך |למה |מתי |האם |אפשר|ניתן/.test(s);
+const isQuestion = (s) => /\?/.test(s) || /^(מה|איך|למה|מתי|האם)\s/.test(s.trim());
 
 function splitIntoSpeakerBlocks(text) {
   const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
@@ -96,7 +96,12 @@ function extractMetadata(text) {
   const date = text.match(/\b(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b/)?.[1] || document.getElementById('meetingDate').value || 'לא זוהה';
   const time = text.match(/\b([01]?\d|2[0-3]):[0-5]\d\b/)?.[0] || 'לא זוהה';
   const duration = text.match(/(?:משך|duration)[:\-]?\s*(\d+\s*(?:דקות|שעות|minutes|hours))/i)?.[1] || `${Math.max(30, Math.round(lines.length / 6))} דקות (משוער)`;
-  const topic = lines[0]?.length > 6 ? lines[0].slice(0, 90) : top.match(/(?:נושא|כותרת|Title|Topic)[:\-]?\s*([^|\n]+)/i)?.[1]?.trim() || 'פגישת עבודה';
+  const explicitTopic = top.match(/(?:נושא|כותרת|Title|Topic)[:\-]?\s*([^|\n]+)/i)?.[1]?.trim();
+  const firstContentLine = lines.find((line) => (
+    !speakerLine.test(line)
+    && !/^(?:חברה|לקוח|Client|Company|תאריך|שעה|משך|duration|משתתפים|נושא|כותרת|Title|Topic)[:\-]/i.test(line)
+  ));
+  const topic = explicitTopic || (firstContentLine?.length > 6 ? firstContentLine.slice(0, 90) : 'פגישת עבודה');
 
   const trainer = [...participants].find((name) => /support|מדריך|תמיכה|mida|trainer/i.test(name)) || 'לא זוהה';
 
@@ -155,7 +160,7 @@ function extractStructuredAnalysis(text) {
   }));
 
   const devTasks = issues
-    .filter((s) => /(לא עובד|תקלה|נתקע|איטי)/.test(s))
+    .filter((s) => issueRegex.test(s))
     .slice(0, 5)
     .map((s) => `לטפל בבעיה: ${s}`);
 
@@ -206,6 +211,9 @@ function renderAnalysis(analysis) {
   riskList.innerHTML = analysis.sections.risks.map((risk) => `<li>• ${risk}</li>`).join('');
   followupEmail.textContent = analysis.email;
   riskBadge.textContent = analysis.riskLevel;
+  riskBadge.classList.remove('medium', 'high');
+  if (analysis.riskLevel === 'גבוה') riskBadge.classList.add('high');
+  if (analysis.riskLevel === 'בינוני') riskBadge.classList.add('medium');
   confidenceBadge.textContent = analysis.confidence;
   analysisNote.textContent = 'זהו ניתוח מקומי מובנה מבוסס כוונה ותפקידי דוברים.';
   renderSections(analysis);
