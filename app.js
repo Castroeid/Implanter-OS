@@ -1,5 +1,4 @@
-const API_BASE_URL = 'https://YOUR-RENDER-URL';
-
+const API_BASE_URL = "https://implanter-os.onrender.com";
 const form = document.getElementById('meeting-form');
 const transcriptEl = document.getElementById('transcript');
 const analyzeBtn = document.getElementById('analyzeBtn');
