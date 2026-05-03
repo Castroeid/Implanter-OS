@@ -66,6 +66,8 @@ h2 { font-size: 1.25rem; margin-bottom: 0.3rem; }
   background: #eef3fa;
   border: 1px solid #d4e1f2;
 }
+.top-action-bar{display:flex;justify-content:space-between;align-items:center;gap:.7rem;flex-wrap:wrap}
+.top-actions{display:flex;gap:.5rem;flex-wrap:wrap}
 
 .tab-btn {
   border: 1px solid transparent;
@@ -235,6 +237,7 @@ button:disabled { opacity: 0.65; cursor: not-allowed; }
   .summary-grid { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
   .task-item { grid-template-columns: auto 1fr; }
   .task-header { flex-direction: column; align-items: flex-start; }
+  .top-action-bar{align-items:flex-start}
 }
 
 .action-row{display:flex;gap:.6rem;flex-wrap:wrap}

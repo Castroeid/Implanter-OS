@@ -4,7 +4,8 @@ const HISTORY_KEY = "implanter_os_meeting_history_v1";
 const form = document.getElementById("meeting-form");
 const transcriptEl = document.getElementById("transcript");
 const analyzeBtn = document.getElementById("analyzeBtn");
-const saveAnalysisBtn = document.getElementById("saveAnalysisBtn");
+const topSaveMeetingBtn = document.getElementById("topSaveMeetingBtn");
+const topExportPdfBtn = document.getElementById("topExportPdfBtn");
 const clearMeetingBtn = document.getElementById("clearMeetingBtn");
 const metadataCard = document.getElementById("metadataCard");
 const metadataContent = document.getElementById("metadataContent");
@@ -25,7 +26,6 @@ const toastContainer = document.getElementById("toastContainer");
 const copySummaryBtn = document.getElementById("copySummaryBtn");
 const copyEmailBtn = document.getElementById("copyEmailBtn");
 const copyTasksBtn = document.getElementById("copyTasksBtn");
-const exportPdfBtn = document.getElementById("exportPdfBtn");
 const fileInput = document.getElementById("fileInput");
 const dropZone = document.getElementById("dropZone");
 const uploadStatus = document.getElementById("uploadStatus");
@@ -100,23 +100,31 @@ function renderAnalysis(data) {
   sectionsList.innerHTML = sections.map(([title, items]) => `<article class="section-block"><h4>${title}</h4><ul>${renderList(items)}</ul></article>`).join("");
   emptyState.classList.add("hidden");
   dashboard.classList.remove("hidden");
-  saveAnalysisBtn.classList.remove("hidden");
 }
 
 function getHistory() { if (!localStorageAvailable) return []; try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch { return []; } }
 function saveHistory(items) { if (!localStorageAvailable) return; localStorage.setItem(HISTORY_KEY, JSON.stringify(items)); }
 function saveOrUpdateMeeting() {
-  if (!lastPayload || !lastAnalysis || !localStorageAvailable) return;
+  if (!localStorageAvailable) return;
+  const clientNameInput = document.getElementById("clientName")?.value?.trim() || "";
+  const fallbackName = clientNameInput || "פגישה ללא שם";
+  const meetingDate = document.getElementById("meetingDate")?.value || "";
+  const meetingType = document.getElementById("meetingType")?.value || "";
+  const transcript = transcriptEl?.value?.trim() || "";
+  const hasAnalysis = Boolean(lastAnalysis);
+  const payload = { clientName: fallbackName, meetingDate, meetingType, transcript };
+  if (!lastPayload) lastPayload = payload;
   const now = new Date().toISOString();
   const history = getHistory();
   const existing = history.find((h) => h.id === currentMeetingId);
-  const analysisWithTasks = { ...lastAnalysis, tasks: taskState.map(({ checked, ...t }) => t) };
+  const analysisWithTasks = hasAnalysis ? { ...lastAnalysis, tasks: taskState.map(({ checked, ...t }) => t) } : null;
   const item = {
     id: currentMeetingId || crypto.randomUUID(),
-    clientName: lastPayload.clientName,
-    meetingDate: lastPayload.meetingDate,
-    meetingType: lastPayload.meetingType,
-    transcriptPreview: (lastPayload.transcript || "").slice(0, 240),
+    clientName: fallbackName,
+    meetingDate,
+    meetingType,
+    transcript,
+    transcriptPreview: transcript.slice(0, 240),
     analysis: analysisWithTasks,
     taskCheckboxStates: taskState.map((t) => t.checked),
     taskStatuses: taskState.map((t) => t.status),
@@ -125,17 +133,18 @@ function saveOrUpdateMeeting() {
   };
   const next = [item, ...history.filter((h) => h.id !== item.id)].sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
   currentMeetingId = item.id;
+  lastPayload = payload;
   saveHistory(next);
   renderHistory();
-  showToast("הניתוח נשמר בהצלחה");
+  showToast("הפגישה נשמרה בהצלחה");
 }
 function renderHistory() { /* unchanged-ish */
   const clientFilter = (historyClientFilter.value || "").trim();
   const typeFilter = historyTypeFilter.value || "";
   const dateFilter = historyDateFilter.value || "";
-  const items = getHistory().filter((item) => (!clientFilter || item.clientName.includes(clientFilter)) && (!typeFilter || item.meetingType === typeFilter) && (!dateFilter || item.meetingDate === dateFilter));
+  const items = getHistory().filter((item) => (!(item.clientName || "").trim() ? "פגישה ללא שם" : item.clientName).includes(clientFilter) && (!typeFilter || item.meetingType === typeFilter) && (!dateFilter || item.meetingDate === dateFilter));
   if (!items.length) { historyList.innerHTML = '<p class="muted">לא נמצאו פגישות תואמות.</p>'; return; }
-  historyList.innerHTML = items.map((item) => `<article class="history-card"><div><h3>${safeText(item.clientName)}</h3><p class="muted">תאריך: ${safeText(item.meetingDate)} | סוג: ${safeText(item.meetingType)}</p><p class="muted">משימות: ${item.analysis?.tasks?.length || 0} | רמת סיכון: ${getRiskLevel(item.analysis?.risks || [])}</p></div><div class="history-actions"><button class="ghost open-history" data-id="${item.id}" type="button">פתח ניתוח</button><button class="danger delete-history" data-id="${item.id}" type="button">מחק</button></div></article>`).join("");
+  historyList.innerHTML = items.map((item) => `<article class="history-card"><div><h3>${safeText(item.clientName || "פגישה ללא שם")}</h3><p class="muted">תאריך: ${safeText(item.meetingDate)} | סוג: ${safeText(item.meetingType)}</p><p class="muted">משימות: ${item.analysis?.tasks?.length || 0} | רמת סיכון: ${getRiskLevel(item.analysis?.risks || [])}</p></div><div class="history-actions"><button class="ghost open-history" data-id="${item.id}" type="button">פתח ניתוח</button><button class="danger delete-history" data-id="${item.id}" type="button">מחק</button></div></article>`).join("");
 }
 function loadHistoryAnalysis(id) {
   const item = getHistory().find((h) => h.id === id); if (!item) return;
@@ -143,32 +152,42 @@ function loadHistoryAnalysis(id) {
   document.getElementById("clientName").value = item.clientName || "";
   document.getElementById("meetingDate").value = item.meetingDate || "";
   document.getElementById("meetingType").value = item.meetingType || "";
-  transcriptEl.value = item.transcriptPreview || "";
-  renderAnalysis(item.analysis);
-  if (item.taskCheckboxStates?.length === taskState.length) taskState = taskState.map((t, i) => ({ ...t, checked: Boolean(item.taskCheckboxStates[i]), status: item.taskCheckboxStates[i] ? "בוצעה" : "פתוחה" }));
-  renderTasks();
+  transcriptEl.value = item.transcript || item.transcriptPreview || "";
+  lastPayload = { clientName: item.clientName || "פגישה ללא שם", meetingDate: item.meetingDate || "", meetingType: item.meetingType || "", transcript: transcriptEl.value };
+  if (item.analysis) {
+    renderAnalysis(item.analysis);
+    if (item.taskCheckboxStates?.length === taskState.length) taskState = taskState.map((t, i) => ({ ...t, checked: Boolean(item.taskCheckboxStates[i]), status: item.taskCheckboxStates[i] ? "בוצעה" : "פתוחה" }));
+    renderTasks();
+  }
   switchTab("analysis");
 }
 function clearMeeting() {
   if (!confirm("לנקות את הטופס ואת תוצאות הניתוח הנוכחיות?")) return;
   form.reset(); transcriptEl.value = ""; uploadStatus.textContent = "לא נבחר קובץ";
   lastAnalysis = null; lastPayload = null; currentMeetingId = null; taskState = [];
-  metadataCard.classList.add("hidden"); dashboard.classList.add("hidden"); emptyState.classList.remove("hidden"); saveAnalysisBtn.classList.add("hidden");
+  metadataCard.classList.add("hidden"); dashboard.classList.add("hidden"); emptyState.classList.remove("hidden");
 }
 function deleteHistoryItem(id) { if (!confirm("למחוק את הפגישה מההיסטוריה?")) return; saveHistory(getHistory().filter((item) => item.id !== id)); renderHistory(); }
 function switchTab(tab) { const analysisActive = tab === "analysis"; analysisTabBtn.classList.toggle("active", analysisActive); historyTabBtn.classList.toggle("active", !analysisActive); analysisView.classList.toggle("hidden", !analysisActive); historyView.classList.toggle("hidden", analysisActive); }
 
 function exportAnalysisPdf() {
-  if (!lastAnalysis || !window.html2pdf) { alert("לא ניתן לייצא PDF כרגע. נסו שוב בעוד רגע."); return; }
+  if (!lastAnalysis) { alert("יש לבצע ניתוח לפני ייצוא PDF."); return; }
   try {
-    showToast("ייצוא PDF התחיל");
     const md = lastAnalysis.meetingMetadata || {};
-    const html = `<div dir="rtl" style="font-family:Arial;padding:24px;line-height:1.8;color:#1d2a3a"><h1 style="margin-top:0">סיכום פגישה - Implanter OS</h1><p><strong>לקוח:</strong> ${safeText(md.clientName)}</p><p><strong>תאריך פגישה:</strong> ${safeText(md.meetingDate)}</p><p><strong>סוג פגישה:</strong> ${safeText(md.meetingType)}</p><p><strong>משתתפים:</strong> ${safeText(md.participants)}</p><hr/><h3>סיכום מנהלים</h3><p>${safeText(lastAnalysis.executiveSummary)}</p><h3>מייל המשך</h3><p style="white-space:pre-line">${safeText(lastAnalysis.followUpEmail)}</p></div>`;
-    const el = document.createElement("div");
-    el.innerHTML = html;
-    const clientName = (md.clientName || "client").replace(/\s+/g, "-");
-    const meetingDate = md.meetingDate || new Date().toISOString().slice(0, 10);
-    window.html2pdf().from(el).set({ margin: 10, filename: `implanter-os-${clientName}-${meetingDate}.pdf`, html2canvas: { scale: 2 }, jsPDF: { unit: "mm", format: "a4", orientation: "portrait" } }).save().then(() => showToast("ייצוא PDF הושלם"));
+    const clientName = (document.getElementById("clientName")?.value?.trim() || md.clientName || "meeting").replace(/\s+/g, "-");
+    const meetingDate = document.getElementById("meetingDate")?.value || md.meetingDate || new Date().toISOString().slice(0, 10);
+    const fileName = `implanter-os-${clientName}-${meetingDate}.pdf`;
+    const sections = [["סיכום מנהלים", lastAnalysis.executiveSummary],["מטרת הפגישה", lastAnalysis.meetingGoal],["צרכי לקוח", lastAnalysis.clientNeeds],["נושאים שנדונו", lastAnalysis.topicsCovered],["שאלות לקוח", lastAnalysis.clientQuestions],["תקלות ובאגים", lastAnalysis.issuesAndBugs],["החלטות", lastAnalysis.decisionsMade],["משימות", taskState.map((t)=>`${t.checked ? "☑" : "☐"} ${t.title || "משימה"} - ${t.status || "פתוחה"}`)],["סיכונים", lastAnalysis.risks],["משוב מטמיע", [...(lastAnalysis.implementerFeedback?.whatWentWell || []), ...(lastAnalysis.implementerFeedback?.whatCouldImprove || [])]],["אג׳נדה לפגישה הבאה", lastAnalysis.nextMeetingAgenda]];
+    const renderField = (label, value) => `<p><strong>${label}:</strong> ${safeText(value, "לא זוהה")}</p>`;
+    const renderSection = (title, value, isPre = false) => `<section class="section"><h2>${title}</h2>${isPre ? `<pre>${value || ""}</pre>` : Array.isArray(value) ? `<ul>${renderList(value)}</ul>` : `<p>${safeText(value, "לא זוהה")}</p>`}</section>`;
+    const html = `<!doctype html><html lang="he" dir="rtl"><head><meta charset="UTF-8"/><title>${fileName}</title><style>@page{size:A4;margin:16mm;}body{direction:rtl;text-align:right;font-family:Arial,sans-serif;line-height:1.6;color:#111;}h1{margin-top:0}.section{page-break-inside:avoid;margin-bottom:18px;}ul{padding-right:24px;}pre{white-space:pre-wrap;direction:rtl;text-align:right;background:#f5f5f5;padding:10px;border-radius:8px;}</style></head><body><h1>Implanter OS - סיכום פגישה</h1>${renderField("שם לקוח", md.clientName || document.getElementById("clientName")?.value || "פגישה ללא שם")}${renderField("תאריך פגישה", md.meetingDate || document.getElementById("meetingDate")?.value)}${renderField("סוג פגישה", md.meetingType || document.getElementById("meetingType")?.value)}${renderField("משתתפים", md.participants)}${sections.map(([t,v])=>renderSection(t,v)).join("")}${renderSection("מייל המשך", lastAnalysis.followUpEmail || "", true)}<button onclick="window.print()">הדפס / שמור כ-PDF</button></body></html>`;
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1024,height=768");
+    if (!printWindow) throw new Error("לא ניתן לפתוח חלון הדפסה.");
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.document.title = fileName;
+    showToast("חלון ייצוא PDF נפתח");
   } catch { alert("אירעה שגיאה בייצוא ל-PDF. ניתן להמשיך לעבוד ולנסות שוב."); }
 }
 async function analyzeMeeting(payload) { const response = await fetch(`${API_BASE_URL}/api/analyze`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || data.details || "כשל בניתוח הפגישה בשרת."); return data; }
@@ -192,7 +211,7 @@ taskList?.addEventListener("change", (event) => {
   taskState[idx].status = checked ? "בוצעה" : "פתוחה";
   renderTasks();
 });
-saveAnalysisBtn?.addEventListener("click", saveOrUpdateMeeting);
+topSaveMeetingBtn?.addEventListener("click", saveOrUpdateMeeting);
 clearMeetingBtn?.addEventListener("click", clearMeeting);
 fileInput?.addEventListener("change", (event) => handleFile(event.target.files[0]));
 ["dragenter", "dragover"].forEach((n) => dropZone?.addEventListener(n, (e) => { e.preventDefault(); dropZone.classList.add("active"); }));
@@ -203,7 +222,7 @@ dropZone?.addEventListener("keydown", (event) => { if (event.key === "Enter" || 
 copySummaryBtn?.addEventListener("click", () => { navigator.clipboard.writeText(summaryText?.textContent || ""); showToast("הועתק ללוח"); });
 copyEmailBtn?.addEventListener("click", () => { navigator.clipboard.writeText(followupEmail?.textContent || ""); showToast("הועתק ללוח"); });
 copyTasksBtn?.addEventListener("click", () => { navigator.clipboard.writeText(taskState.map((task) => `- [${task.checked ? "x" : " "}] ${task.title} | ${task.owner} | ${task.priority} | ${task.status}`).join("\n") || "לא זוהו משימות"); showToast("הועתק ללוח"); });
-exportPdfBtn?.addEventListener("click", exportAnalysisPdf);
+topExportPdfBtn?.addEventListener("click", exportAnalysisPdf);
 analysisTabBtn?.addEventListener("click", () => switchTab("analysis"));
 historyTabBtn?.addEventListener("click", () => switchTab("history"));
 historyList?.addEventListener("click", (event) => { const id = event.target?.dataset?.id; if (!id) return; if (event.target.classList.contains("open-history")) loadHistoryAnalysis(id); if (event.target.classList.contains("delete-history")) deleteHistoryItem(id); });

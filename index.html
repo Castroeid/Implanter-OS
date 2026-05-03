@@ -14,9 +14,15 @@
       </header>
 
       <section class="panel" aria-label="ניווט ראשי">
-        <div class="tabs" role="tablist" aria-label="אזורי עבודה">
-          <button id="analysisTabBtn" class="tab-btn active" type="button" role="tab" aria-selected="true">ניתוח פגישה</button>
-          <button id="historyTabBtn" class="tab-btn" type="button" role="tab" aria-selected="false">היסטוריית פגישות</button>
+        <div class="top-action-bar">
+          <div class="tabs" role="tablist" aria-label="אזורי עבודה">
+            <button id="analysisTabBtn" class="tab-btn active" type="button" role="tab" aria-selected="true">ניתוח פגישה</button>
+            <button id="historyTabBtn" class="tab-btn" type="button" role="tab" aria-selected="false">היסטוריית פגישות</button>
+          </div>
+          <div class="top-actions">
+            <button id="topSaveMeetingBtn" class="ghost" type="button">שמור פגישה</button>
+            <button id="topExportPdfBtn" class="ghost" type="button">ייצוא ל-PDF</button>
+          </div>
         </div>
       </section>
 
@@ -63,7 +69,7 @@
               <div id="metadataContent" class="metadata-grid"></div>
             </article>
 
-            <div class="action-row full-width"><button id="analyzeBtn" type="submit">נתח פגישה</button><button id="saveAnalysisBtn" class="ghost hidden" type="button">שמור ניתוח</button><button id="clearMeetingBtn" class="ghost" type="button">נקה פגישה</button></div>
+            <div class="action-row full-width"><button id="analyzeBtn" type="submit">נתח פגישה</button><button id="clearMeetingBtn" class="ghost" type="button">נקה פגישה</button></div>
           </form>
         </section>
 
@@ -95,7 +101,6 @@
                   <h3>משימות</h3>
                   <div class="task-actions">
                     <button class="ghost" id="copyTasksBtn" type="button">העתק משימות</button>
-                    <button class="ghost" id="exportPdfBtn" type="button">ייצוא ל-PDF</button>
                     <button class="ghost" type="button" disabled>ייצוא לאקסל - בקרוב</button>
                   </div>
                 </div>
@@ -141,7 +146,6 @@
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
     <script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="./app.js" type="module"></script>
   </body>
 </html>
