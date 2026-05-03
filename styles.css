@@ -22,7 +22,7 @@ body {
 }
 
 .container {
-  max-width: 1220px;
+  max-width: 1480px;
   margin: 0 auto;
   padding: 1.2rem 1rem 2rem;
   display: grid;
@@ -236,3 +236,16 @@ button:disabled { opacity: 0.65; cursor: not-allowed; }
   .task-item { grid-template-columns: auto 1fr; }
   .task-header { flex-direction: column; align-items: flex-start; }
 }
+
+.action-row{display:flex;gap:.6rem;flex-wrap:wrap}
+.loading-panel{margin:1rem 0;padding:1rem;border:1px solid #d6e3f4;border-radius:12px;background:#f8fbff;animation:pulse 1.8s infinite}
+.loading-panel ol{margin:.6rem 0 0;padding-inline-start:1.2rem;display:grid;gap:.2rem}
+.spinner{width:28px;height:28px;border:3px solid #bfd2ef;border-top-color:#2b62de;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:.5rem}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 rgba(39,95,221,.08)}50%{box-shadow:0 0 0 8px rgba(39,95,221,.03)}}
+.toast-container{position:fixed;left:1rem;bottom:1rem;display:grid;gap:.45rem;z-index:1000}
+.toast{background:#17375f;color:#fff;padding:.6rem .9rem;border-radius:10px;box-shadow:var(--shadow)}
+.task-status{border-radius:999px;padding:.2rem .56rem;font-size:.85rem;font-weight:700}
+.task-status.open{background:#fff4dc;color:#946200}
+.task-status.done{background:#e8f7ef;color:#1f7a49}
+.risk-badge.low{background:#e8f7ef;color:#1f7a49}
