@@ -27,8 +27,11 @@ let state = { tasks: [], filter: 'הכל', lastAnalysis: null };
 const filters = ['הכל', 'שלי', 'לקוח', 'תמיכה/פיתוח', 'פתוחות בלבד'];
 
 const speakerLine = /^([A-Za-zא-ת'".\- ]{2,})\s+(\d{1,2}:\d{2})$/;
-const commitmentRegex = /(נבצע|אבצע|אבדוק|נבדוק|אעדכן|נעדכן|נשלח|אשלח|נקבע|נתאם|נחליט|נפתח|אפתח|נטפל|אעביר|נעביר|אסגור|נסגור|אחזור|נחזור)/;
+const strictTaskRegex = /(צריך לבדוק|אני אבדוק|נבדוק|אברר|אשאל|אעביר|נשלח|אשלח|נקבע|צריך לקבוע|נמשיך|לפתוח קריאה|לטפל|לעדכן|לתקן|לחזור אליכם)/;
 const issueRegex = /(לא עובד|תקלה|נתקע|איטי|איטית|איטיות)/;
+const englishMonthDateRegex = /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s*(\d{4}),\s*(\d{1,2}:\d{2}\s?(?:AM|PM))\b/i;
+const durationLineRegex = /^\s*(\d+h\s+)?\d+m\s+\d+s\s*$/i;
+const inlineDurationRegex = /\b(?:\d+h\s+)?\d+m\s+\d+s\b/i;
 
 const isQuestion = (s) => /\?/.test(s) || /^(מה|איך|למה|מתי|האם)\s/.test(s.trim());
 
@@ -76,8 +79,26 @@ function classifySentenceType(sentence) {
   if (issueRegex.test(sentence)) return 'בעיה';
   if (isQuestion(sentence)) return 'שאלה';
   if (/(צריך|אפשר|תבקשו|תשלחו|תעדכנו|נא )/.test(sentence)) return 'בקשה';
-  if (/(נבצע|אבצע|אבדוק|נעדכן|נשלח|נקבע|נפתח|נטפל|אעביר|לתקן|לבדוק|להגדיר|לשלוח)/.test(sentence)) return 'פעולה';
+  if (strictTaskRegex.test(sentence)) return 'פעולה';
   return 'הסבר';
+}
+
+function formatEnglishMonthDateToHebrew(text) {
+  const m = text.match(englishMonthDateRegex);
+  if (!m) return null;
+  const months = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
+  const day = String(Number(m[2])).padStart(2, '0');
+  const month = String(months[m[1].toLowerCase()]).padStart(2, '0');
+  return `${day}/${month}/${m[3]}`;
+}
+
+function isValidParticipantName(name) {
+  if (!name || name.length < 2) return false;
+  if (strictTaskRegex.test(name)) return false;
+  if (englishMonthDateRegex.test(name)) return false;
+  if (/started transcription/i.test(name)) return false;
+  if (/^\d{1,2}[:/]\d{1,2}[:/]\d{2,4}$/.test(name)) return false;
+  return true;
 }
 
 function extractMetadata(text) {
@@ -87,15 +108,23 @@ function extractMetadata(text) {
   const participants = new Set();
   for (const line of lines) {
     const match = line.match(speakerLine);
-    if (match) participants.add(match[1].trim());
+    if (match) {
+      const name = match[1].trim();
+      if (isValidParticipantName(name)) participants.add(name);
+    }
     const colonMatch = line.match(/^([^:]{2,40}):/);
-    if (colonMatch) participants.add(colonMatch[1].trim());
+    if (colonMatch) {
+      const name = colonMatch[1].trim();
+      if (isValidParticipantName(name)) participants.add(name);
+    }
   }
 
   const company = top.match(/(?:חברה|לקוח|Client|Company)[:\-]?\s*([^|,\n]+)/i)?.[1]?.trim() || document.getElementById('clientName').value.trim() || 'לא זוהה';
-  const date = text.match(/\b(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b/)?.[1] || document.getElementById('meetingDate').value || 'לא זוהה';
-  const time = text.match(/\b([01]?\d|2[0-3]):[0-5]\d\b/)?.[0] || 'לא זוהה';
-  const duration = text.match(/(?:משך|duration)[:\-]?\s*(\d+\s*(?:דקות|שעות|minutes|hours))/i)?.[1] || `${Math.max(30, Math.round(lines.length / 6))} דקות (משוער)`;
+  const englishDate = formatEnglishMonthDateToHebrew(text);
+  const numericDate = text.match(/\b(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b/)?.[1];
+  const date = englishDate || numericDate || document.getElementById('meetingDate').value || 'לא זוהה';
+  const time = text.match(englishMonthDateRegex)?.[4]?.replace(/\s+/g, '') || 'לא זוהה';
+  const duration = lines.find((line) => durationLineRegex.test(line)) || text.match(inlineDurationRegex)?.[0] || `${Math.max(30, Math.round(lines.length / 6))} דקות (משוער)`;
   const explicitTopic = top.match(/(?:נושא|כותרת|Title|Topic)[:\-]?\s*([^|\n]+)/i)?.[1]?.trim();
   const firstContentLine = lines.find((line) => (
     !speakerLine.test(line)
@@ -140,7 +169,7 @@ function extractStructuredAnalysis(text) {
   const issues = entries.filter((e) => issueRegex.test(e.sentence)).map((e) => e.sentence).slice(0, 8);
   const decisions = entries.filter((e) => /(סיכמנו|נחליט|נקבע)/.test(e.sentence)).map((e) => e.sentence).slice(0, 6);
 
-  const actionable = entries.filter((e) => e.type === 'פעולה' || commitmentRegex.test(e.sentence));
+  const actionable = entries.filter((e) => strictTaskRegex.test(e.sentence));
   const deduped = [];
   const seen = new Set();
   actionable.forEach((e) => {
@@ -151,7 +180,7 @@ function extractStructuredAnalysis(text) {
     }
   });
 
-  const limitedTasks = deduped.slice(0, 8).map((e, i) => ({
+  const strictTasks = deduped.slice(0, 8).map((e, i) => ({
     id: `task-${i}`,
     title: e.sentence,
     owner: classifyOwner(e.sentence, e.role),
@@ -164,14 +193,21 @@ function extractStructuredAnalysis(text) {
     .slice(0, 5)
     .map((s) => `לטפל בבעיה: ${s}`);
 
-  const summaryParagraph = `בפגישה הוגדרה מטרה ברורה סביב ${objective}. במהלך השיחה עלו ${mainTopics.length} נושאים מרכזיים, נשאלו ${clientQuestions.length} שאלות מצד הלקוח, וזוהו ${issues.length} בעיות הדורשות התייחסות. בנוסף התקבלו ${decisions.length} החלטות והוגדרו ${limitedTasks.length} משימות ישימות להמשך עבודה.`;
+  const realTasks = strictTasks.length >= 2 ? strictTasks : [];
+  const discussionPoints = entries
+    .filter((e) => !strictTaskRegex.test(e.sentence) && e.type !== 'שאלה')
+    .map((e) => e.sentence)
+    .filter((s, i, arr) => arr.indexOf(s) === i)
+    .slice(0, 8);
+
+  const summaryParagraph = `בפגישה הוגדרה מטרה ברורה סביב ${objective}. במהלך השיחה עלו ${mainTopics.length} נושאים מרכזיים, נשאלו ${clientQuestions.length} שאלות מצד הלקוח, וזוהו ${issues.length} בעיות הדורשות התייחסות. בנוסף התקבלו ${decisions.length} החלטות והוגדרו ${realTasks.length} משימות ישימות להמשך עבודה.`;
 
   const risks = [];
   if (issues.length) risks.push('קיימות תקלות פתוחות שעשויות לעכב את ההטמעה.');
-  if (!limitedTasks.length) risks.push('לא זוהו פעולות מחייבות ולכן קיים סיכון לחוסר המשכיות.');
+  if (!realTasks.length) risks.push('לא זוהו פעולות מחייבות ולכן קיים סיכון לחוסר המשכיות.');
 
   return {
-    tasks: limitedTasks,
+    tasks: realTasks,
     sections: {
       executiveSummary: summaryParagraph,
       objective,
@@ -179,8 +215,10 @@ function extractStructuredAnalysis(text) {
       clientQuestions,
       issues,
       decisions,
-      realTasks: limitedTasks,
-      followUpTasks: limitedTasks.filter((t) => /נקבע|נתאם|פגישה/.test(t.title)),
+      realTasks,
+      tasksFallbackMessage: realTasks.length < 2 ? 'לא זוהו משימות ברורות מתוך התמלול' : '',
+      discussionPoints,
+      followUpTasks: realTasks.filter((t) => /נקבע|נתאם|פגישה/.test(t.title)),
       developmentTasks: devTasks,
       risks,
     }
@@ -199,7 +237,8 @@ function renderSections(analysis) {
     ['שאלות לקוח', analysis.sections.clientQuestions],
     ['בעיות', analysis.sections.issues],
     ['החלטות', analysis.sections.decisions],
-    ['משימות', analysis.sections.realTasks.map((t) => t.title)],
+    ['משימות', analysis.sections.realTasks.length >= 2 ? analysis.sections.realTasks.map((t) => t.title) : [analysis.sections.tasksFallbackMessage]],
+    ['דברים שעלו בפגישה', analysis.sections.discussionPoints],
     ['משימות לפיתוח', analysis.sections.developmentTasks],
     ['סיכונים', analysis.sections.risks],
   ];
