@@ -13,104 +13,132 @@
         <p class="subtitle">דשבורד ניתוח פגישות חכם (MVP)</p>
       </header>
 
-      <section class="panel" aria-labelledby="input-title">
-        <h2 id="input-title">קלט פגישה</h2>
-        <form id="meeting-form" class="form-grid">
-          <label>
-            שם לקוח
-            <input id="clientName" type="text" placeholder="לדוגמה: חברת אלפא" />
-          </label>
-
-          <label>
-            תאריך פגישה
-            <input id="meetingDate" type="date" />
-          </label>
-
-          <label>
-            סוג פגישה
-            <select id="meetingType">
-              <option value="" selected>בחרו סוג פגישה</option>
-              <option value="הדרכה">הדרכה</option>
-              <option value="תמיכה">תמיכה</option>
-              <option value="אפיון">אפיון</option>
-              <option value="המשך">המשך</option>
-            </select>
-          </label>
-
-          <div id="dropZone" class="drop-zone full-width" role="button" tabindex="0" aria-label="העלאת קובץ תמלול">
-            <p>גררו ושחררו קובץ תמלול כאן (TXT או DOCX)</p>
-            <p class="muted">או</p>
-            <label class="upload-btn" for="fileInput">בחרו קובץ</label>
-            <input id="fileInput" type="file" accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden />
-            <p id="uploadStatus" class="upload-status">לא נבחר קובץ</p>
-          </div>
-
-          <label class="full-width">
-            תמליל פגישה
-            <textarea id="transcript" rows="11" placeholder="הדביקו כאן את תמליל הפגישה או העלו קובץ..."></textarea>
-          </label>
-
-          <article id="metadataCard" class="card metadata-card full-width hidden" aria-live="polite">
-            <h3>פרטי פגישה שזוהו</h3>
-            <div id="metadataContent" class="metadata-grid"></div>
-          </article>
-
-          <button id="analyzeBtn" type="submit">נתח פגישה</button>
-        </form>
+      <section class="panel" aria-label="ניווט ראשי">
+        <div class="tabs" role="tablist" aria-label="אזורי עבודה">
+          <button id="analysisTabBtn" class="tab-btn active" type="button" role="tab" aria-selected="true">ניתוח פגישה</button>
+          <button id="historyTabBtn" class="tab-btn" type="button" role="tab" aria-selected="false">היסטוריית פגישות</button>
+        </div>
       </section>
 
-      <section id="results" class="panel" aria-live="polite">
-        <h2>תוצאות ניתוח</h2>
-        <div id="emptyState" class="empty-state">עדיין לא בוצע ניתוח. העלו תמליל ולחצו "נתח פגישה".</div>
+      <section id="analysisView" class="view-stack">
+        <section class="panel" aria-labelledby="input-title">
+          <h2 id="input-title">קלט פגישה</h2>
+          <form id="meeting-form" class="form-grid">
+            <label>
+              שם לקוח
+              <input id="clientName" type="text" placeholder="לדוגמה: חברת אלפא" />
+            </label>
 
-        <div id="dashboard" class="hidden">
-          <div id="summaryCards" class="summary-grid"></div>
+            <label>
+              תאריך פגישה
+              <input id="meetingDate" type="date" />
+            </label>
 
-          <div class="analysis-grid">
-            <article class="card">
-              <h3>סיכום מנהלים</h3>
-              <p id="summaryText"></p>
-              <button class="ghost" id="copySummaryBtn" type="button">העתק סיכום</button>
+            <label>
+              סוג פגישה
+              <select id="meetingType">
+                <option value="" selected>בחרו סוג פגישה</option>
+                <option value="הדרכה">הדרכה</option>
+                <option value="תמיכה">תמיכה</option>
+                <option value="אפיון">אפיון</option>
+                <option value="המשך">המשך</option>
+              </select>
+            </label>
+
+            <div id="dropZone" class="drop-zone full-width" role="button" tabindex="0" aria-label="העלאת קובץ תמלול">
+              <p>גררו ושחררו קובץ תמלול כאן (TXT או DOCX)</p>
+              <p class="muted">או</p>
+              <label class="upload-btn" for="fileInput">בחרו קובץ</label>
+              <input id="fileInput" type="file" accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden />
+              <p id="uploadStatus" class="upload-status">לא נבחר קובץ</p>
+            </div>
+
+            <label class="full-width">
+              תמליל פגישה
+              <textarea id="transcript" rows="11" placeholder="הדביקו כאן את תמליל הפגישה או העלו קובץ..."></textarea>
+            </label>
+
+            <article id="metadataCard" class="card metadata-card full-width hidden" aria-live="polite">
+              <h3>פרטי פגישה שזוהו</h3>
+              <div id="metadataContent" class="metadata-grid"></div>
             </article>
 
-            <article class="card">
-              <h3>סיכונים</h3>
-              <div class="risk-row">
-                <span id="riskBadge" class="risk-badge">נמוך</span>
-                <span id="confidenceBadge" class="confidence-badge">רמת ביטחון: נמוכה</span>
-              </div>
-              <ul id="riskList"></ul>
-            </article>
+            <button id="analyzeBtn" type="submit">נתח פגישה</button>
+          </form>
+        </section>
 
-            <article class="card full-span">
-              <div class="task-header">
-                <h3>משימות</h3>
-                <div class="task-actions">
-                  <button class="ghost" id="copyTasksBtn" type="button">העתק משימות</button>
-                  <button class="ghost" type="button" disabled>ייצוא לאקסל - בקרוב</button>
+        <section id="results" class="panel" aria-live="polite">
+          <h2>תוצאות ניתוח</h2>
+          <div id="emptyState" class="empty-state">עדיין לא בוצע ניתוח. העלו תמליל ולחצו "נתח פגישה".</div>
+
+          <div id="dashboard" class="hidden">
+            <div id="summaryCards" class="summary-grid"></div>
+
+            <div class="analysis-grid">
+              <article class="card">
+                <h3>סיכום מנהלים</h3>
+                <p id="summaryText"></p>
+                <button class="ghost" id="copySummaryBtn" type="button">העתק סיכום</button>
+              </article>
+
+              <article class="card">
+                <h3>סיכונים</h3>
+                <div class="risk-row">
+                  <span id="riskBadge" class="risk-badge">נמוך</span>
+                  <span id="confidenceBadge" class="confidence-badge">רמת ביטחון: נמוכה</span>
                 </div>
-              </div>
-              <div id="taskFilters" class="filters"></div>
-              <ul id="taskList" class="tasks"></ul>
-            </article>
+                <ul id="riskList"></ul>
+              </article>
 
-            <article class="card full-span">
-              <h3>ניתוח מפורט</h3>
-              <div id="sectionsList" class="sections-grid"></div>
-            </article>
+              <article class="card full-span">
+                <div class="task-header">
+                  <h3>משימות</h3>
+                  <div class="task-actions">
+                    <button class="ghost" id="copyTasksBtn" type="button">העתק משימות</button>
+                    <button class="ghost" id="exportPdfBtn" type="button">ייצוא ל-PDF</button>
+                    <button class="ghost" type="button" disabled>ייצוא לאקסל - בקרוב</button>
+                  </div>
+                </div>
+                <div id="taskFilters" class="filters"></div>
+                <ul id="taskList" class="tasks"></ul>
+              </article>
 
-            <article class="card full-span">
-              <h3>מייל המשך</h3>
-              <p id="followupEmail"></p>
-              <p id="analysisNote" class="muted"></p>
-              <button class="ghost" id="copyEmailBtn" type="button">העתק מייל המשך</button>
-            </article>
+              <article class="card full-span">
+                <h3>ניתוח מפורט</h3>
+                <div id="sectionsList" class="sections-grid"></div>
+              </article>
+
+              <article class="card full-span">
+                <h3>מייל המשך</h3>
+                <p id="followupEmail"></p>
+                <p id="analysisNote" class="muted"></p>
+                <button class="ghost" id="copyEmailBtn" type="button">העתק מייל המשך</button>
+              </article>
+            </div>
           </div>
+        </section>
+      </section>
+
+      <section id="historyView" class="panel hidden" aria-labelledby="history-title">
+        <h2 id="history-title">היסטוריית פגישות</h2>
+        <p id="storageWarning" class="muted hidden">לא ניתן לגשת ל-localStorage בדפדפן זה. הניתוח עדיין פעיל.</p>
+        <div class="history-filters">
+          <input id="historyClientFilter" type="text" placeholder="סינון לפי שם לקוח" />
+          <select id="historyTypeFilter">
+            <option value="">כל סוגי הפגישות</option>
+            <option value="הדרכה">הדרכה</option>
+            <option value="תמיכה">תמיכה</option>
+            <option value="אפיון">אפיון</option>
+            <option value="המשך">המשך</option>
+          </select>
+          <input id="historyDateFilter" type="date" />
         </div>
+        <div id="historyList" class="history-list"></div>
       </section>
     </main>
 
     <script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="./app.js" type="module"></script>
   </body>
 </html>
