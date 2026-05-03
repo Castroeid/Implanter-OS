@@ -63,13 +63,13 @@
               <div id="metadataContent" class="metadata-grid"></div>
             </article>
 
-            <button id="analyzeBtn" type="submit">נתח פגישה</button>
+            <div class="action-row full-width"><button id="analyzeBtn" type="submit">נתח פגישה</button><button id="saveAnalysisBtn" class="ghost hidden" type="button">שמור ניתוח</button><button id="clearMeetingBtn" class="ghost" type="button">נקה פגישה</button></div>
           </form>
         </section>
 
         <section id="results" class="panel" aria-live="polite">
           <h2>תוצאות ניתוח</h2>
-          <div id="emptyState" class="empty-state">עדיין לא בוצע ניתוח. העלו תמליל ולחצו "נתח פגישה".</div>
+          <article id="analysisLoadingPanel" class="loading-panel hidden"><div class="spinner"></div><h3>מנתח ההטמעה בפעולה</h3><p class="muted">קורא את התמלול, מזהה שאלות לקוח, משימות, תקלות ונקודות להמשך</p><ol><li>קורא את תמליל הפגישה</li><li>מזהה משתתפים ונושאים מרכזיים</li><li>מפריד בין הסברים, שאלות ומשימות</li><li>בונה סיכום, משימות ומייל המשך</li></ol></article><div id="emptyState" class="empty-state">עדיין לא בוצע ניתוח. העלו תמליל ולחצו "נתח פגישה".</div>
 
           <div id="dashboard" class="hidden">
             <div id="summaryCards" class="summary-grid"></div>
@@ -108,6 +108,8 @@
                 <div id="sectionsList" class="sections-grid"></div>
               </article>
 
+              <article class="card"><h3>טיפ למטמיע</h3><p id="implementerTip"></p></article>
+
               <article class="card full-span">
                 <h3>מייל המשך</h3>
                 <p id="followupEmail"></p>
@@ -136,6 +138,7 @@
         <div id="historyList" class="history-list"></div>
       </section>
     </main>
+    <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
     <script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
