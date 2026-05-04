@@ -5,6 +5,7 @@ const form = document.getElementById("meeting-form");
 const transcriptEl = document.getElementById("transcript");
 const analyzeBtn = document.getElementById("analyzeBtn");
 const topSaveMeetingBtn = document.getElementById("topSaveMeetingBtn");
+const topNewMeetingBtn = document.getElementById("topNewMeetingBtn");
 const topExportPdfBtn = document.getElementById("topExportPdfBtn");
 const clearMeetingBtn = document.getElementById("clearMeetingBtn");
 const metadataCard = document.getElementById("metadataCard");
@@ -44,6 +45,36 @@ let lastPayload = null;
 let currentMeetingId = null;
 let taskState = [];
 let localStorageAvailable = true;
+
+function getMeetingSnapshot() {
+  return {
+    clientName: document.getElementById("clientName")?.value?.trim() || "",
+    meetingDate: document.getElementById("meetingDate")?.value || "",
+    meetingType: document.getElementById("meetingType")?.value || "",
+    transcript: transcriptEl?.value?.trim() || "",
+    analysis: lastAnalysis ? { ...lastAnalysis, tasks: taskState.map(({ checked, ...task }) => task) } : null,
+    taskCheckboxStates: taskState.map((task) => task.checked),
+    taskStatuses: taskState.map((task) => task.status)
+  };
+}
+
+function hasUnsavedAnalysis() {
+  if (!lastAnalysis || !localStorageAvailable) return false;
+  if (!currentMeetingId) return true;
+  const existing = getHistory().find((item) => item.id === currentMeetingId);
+  if (!existing) return true;
+  const current = JSON.stringify(getMeetingSnapshot());
+  const saved = JSON.stringify({
+    clientName: existing.clientName || "",
+    meetingDate: existing.meetingDate || "",
+    meetingType: existing.meetingType || "",
+    transcript: existing.transcript || "",
+    analysis: existing.analysis || null,
+    taskCheckboxStates: existing.taskCheckboxStates || [],
+    taskStatuses: existing.taskStatuses || []
+  });
+  return current !== saved;
+}
 
 const safeText = (v, f = "לא זוהה") => (Array.isArray(v) ? (v.length ? v.join(", ") : f) : v || f);
 const getRiskLevel = (risks = []) => (risks.length > 2 ? "גבוה" : risks.length ? "בינוני" : "נמוך");
@@ -163,9 +194,29 @@ function loadHistoryAnalysis(id) {
 }
 function clearMeeting() {
   if (!confirm("לנקות את הטופס ואת תוצאות הניתוח הנוכחיות?")) return;
-  form.reset(); transcriptEl.value = ""; uploadStatus.textContent = "לא נבחר קובץ";
-  lastAnalysis = null; lastPayload = null; currentMeetingId = null; taskState = [];
+  resetMeetingWorkspace();
+}
+
+function resetMeetingWorkspace() {
+  form.reset();
+  transcriptEl.value = "";
+  if (fileInput) fileInput.value = "";
+  uploadStatus.textContent = "לא נבחר קובץ";
+  lastAnalysis = null;
+  lastPayload = null;
+  currentMeetingId = null;
+  taskState = [];
+  setLoading(false);
   metadataCard.classList.add("hidden"); dashboard.classList.add("hidden"); emptyState.classList.remove("hidden");
+}
+
+function startNewMeeting() {
+  if (lastAnalysis && hasUnsavedAnalysis()) {
+    const shouldContinue = confirm("האם להתחיל פגישה חדשה? שינויים שלא נשמרו יאבדו.");
+    if (!shouldContinue) return;
+  }
+  resetMeetingWorkspace();
+  showToast("נפתחה פגישה חדשה");
 }
 function deleteHistoryItem(id) { if (!confirm("למחוק את הפגישה מההיסטוריה?")) return; saveHistory(getHistory().filter((item) => item.id !== id)); renderHistory(); }
 function switchTab(tab) { const analysisActive = tab === "analysis"; analysisTabBtn.classList.toggle("active", analysisActive); historyTabBtn.classList.toggle("active", !analysisActive); analysisView.classList.toggle("hidden", !analysisActive); historyView.classList.toggle("hidden", analysisActive); }
@@ -212,6 +263,7 @@ taskList?.addEventListener("change", (event) => {
   renderTasks();
 });
 topSaveMeetingBtn?.addEventListener("click", saveOrUpdateMeeting);
+topNewMeetingBtn?.addEventListener("click", startNewMeeting);
 clearMeetingBtn?.addEventListener("click", clearMeeting);
 fileInput?.addEventListener("change", (event) => handleFile(event.target.files[0]));
 ["dragenter", "dragover"].forEach((n) => dropZone?.addEventListener(n, (e) => { e.preventDefault(); dropZone.classList.add("active"); }));
