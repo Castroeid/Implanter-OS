@@ -1,5 +1,6 @@
 const API_BASE_URL = "https://implanter-os.onrender.com";
 const HISTORY_KEY = "implanter_os_meeting_history_v1";
+const TASKS_KEY = "implanter_os_tasks";
 
 const form = document.getElementById("meeting-form");
 const transcriptEl = document.getElementById("transcript");
@@ -33,8 +34,19 @@ const dropZone = document.getElementById("dropZone");
 const uploadStatus = document.getElementById("uploadStatus");
 const analysisTabBtn = document.getElementById("analysisTabBtn");
 const historyTabBtn = document.getElementById("historyTabBtn");
+const tasksTabBtn = document.getElementById("tasksTabBtn");
 const analysisView = document.getElementById("analysisView");
 const historyView = document.getElementById("historyView");
+const tasksView = document.getElementById("tasksView");
+const tasksBoard = document.getElementById("tasksBoard");
+const addTasksBtn = document.getElementById("addTasksBtn");
+const tasksSearchFilter = document.getElementById("tasksSearchFilter");
+const tasksClientFilter = document.getElementById("tasksClientFilter");
+const tasksOwnerFilter = document.getElementById("tasksOwnerFilter");
+const tasksStatusFilter = document.getElementById("tasksStatusFilter");
+const tasksPriorityFilter = document.getElementById("tasksPriorityFilter");
+const tasksDateFromFilter = document.getElementById("tasksDateFromFilter");
+const tasksDateToFilter = document.getElementById("tasksDateToFilter");
 const historyList = document.getElementById("historyList");
 const historyClientFilter = document.getElementById("historyClientFilter");
 const historyTypeFilter = document.getElementById("historyTypeFilter");
@@ -171,6 +183,36 @@ function saveOrUpdateMeeting() {
   renderHistory();
   showToast("הפגישה נשמרה בהצלחה");
 }
+function getTasksStore() { if (!localStorageAvailable) return []; try { return JSON.parse(localStorage.getItem(TASKS_KEY) || "[]"); } catch { return []; } }
+function saveTasksStore(items) { if (!localStorageAvailable) return; localStorage.setItem(TASKS_KEY, JSON.stringify(items)); }
+function normalizeTask(task, meetingInfo = {}) {
+  const now = new Date().toISOString();
+  return {
+    id: task.id || crypto.randomUUID(), title: task.title || "משימה ללא כותרת", description: task.description || "",
+    clientName: task.clientName || meetingInfo.clientName || "לקוח לא זוהה", meetingDate: task.meetingDate || meetingInfo.meetingDate || "", meetingId: task.meetingId || meetingInfo.meetingId || null,
+    owner: task.owner || "אני", priority: task.priority || "בינונית", status: task.status || "פתוחה", source: task.source || "ניתוח פגישה",
+    createdAt: task.createdAt || now, updatedAt: now
+  };
+}
+function addCurrentAnalysisTasksToBoard() {
+  if (!lastAnalysis || !taskState.length) return showToast("אין ניתוח פעיל לייצוא");
+  const meetingInfo = { clientName: document.getElementById("clientName")?.value?.trim() || lastAnalysis.meetingMetadata?.clientName || "לקוח לא זוהה", meetingDate: document.getElementById("meetingDate")?.value || lastAnalysis.meetingMetadata?.meetingDate || "", meetingId: currentMeetingId };
+  const existing = getTasksStore();
+  const existingKeys = new Set(existing.map((t) => `${t.meetingId || ""}__${(t.title || "").trim()}`));
+  const toAdd = taskState.map((task) => normalizeTask({ ...task, source: task.source || "מתוך ניתוח פגישה" }, meetingInfo)).filter((task) => !existingKeys.has(`${task.meetingId || ""}__${task.title.trim()}`));
+  saveTasksStore([...toAdd, ...existing]);
+  renderTasksBoard();
+  showToast("המשימות נוספו ללוח המשימות");
+}
+function renderTasksBoard() {
+ const tasks = getTasksStore(); const search=(tasksSearchFilter?.value||"").trim(); const client=(tasksClientFilter?.value||"").trim();
+ const owner=tasksOwnerFilter?.value||""; const status=tasksStatusFilter?.value||""; const priority=tasksPriorityFilter?.value||""; const df=tasksDateFromFilter?.value||""; const dt=tasksDateToFilter?.value||"";
+ const filtered = tasks.filter((t)=> (!search || `${t.title} ${t.description} ${t.source}`.includes(search)) && (!client || (t.clientName||"").includes(client)) && (!owner || t.owner===owner) && (!status || t.status===status) && (!priority || t.priority===priority) && (!df || (t.meetingDate && t.meetingDate>=df)) && (!dt || (t.meetingDate && t.meetingDate<=dt)));
+ if (!filtered.length) { tasksBoard.innerHTML='<p class="muted">לא נמצאו משימות תואמות.</p>'; return; }
+ const groups = filtered.reduce((acc,t)=>((acc[t.clientName]=acc[t.clientName]||[]).push(t),acc),{});
+ tasksBoard.innerHTML = Object.entries(groups).map(([clientName,items])=>{ const openCount=items.filter((t)=>t.status!=="בוצעה").length; const highCount=items.filter((t)=>t.priority==="גבוהה").length; const lastDate=items.map((t)=>t.meetingDate||"").sort().reverse()[0]||"לא זוהה"; return `<article class="client-group"><h3>${clientName}</h3><p class="muted">פתוחות: ${openCount} | עדיפות גבוהה: ${highCount} | פגישה אחרונה: ${lastDate}</p><div class="task-cards">${items.map((t)=>`<div class="task-card" data-id="${t.id}"><input type="checkbox" class="board-check" ${t.status==="בוצעה"?"checked":""}/><div><strong>${t.title}</strong><p>${t.description||""}</p><p class="muted">תאריך: ${t.meetingDate||"לא זוהה"} | מקור: ${t.source||""}</p></div><select class="board-owner"><option ${t.owner==="אני"?"selected":""}>אני</option><option ${t.owner==="לקוח"?"selected":""}>לקוח</option><option ${t.owner==="תמיכה"?"selected":""}>תמיכה</option><option ${t.owner==="פיתוח"?"selected":""}>פיתוח</option></select><select class="board-priority"><option ${t.priority==="גבוהה"?"selected":""}>גבוהה</option><option ${t.priority==="בינונית"?"selected":""}>בינונית</option><option ${t.priority==="נמוכה"?"selected":""}>נמוכה</option></select><select class="board-status"><option ${t.status==="פתוחה"?"selected":""}>פתוחה</option><option ${t.status==="בטיפול"?"selected":""}>בטיפול</option><option ${t.status==="ממתין ללקוח"?"selected":""}>ממתין ללקוח</option><option ${t.status==="ממתין לפיתוח"?"selected":""}>ממתין לפיתוח</option><option ${t.status==="בוצעה"?"selected":""}>בוצעה</option></select><button class="ghost open-task-meeting" ${t.meetingId?"":"disabled"}>פתח פגישה</button><button class="danger delete-task">מחק משימה</button></div>`).join("")}</div></article>`}).join('');
+}
+function updateBoardTask(id, patch) { const tasks=getTasksStore(); const idx=tasks.findIndex((t)=>t.id===id); if (idx<0) return; tasks[idx]={...tasks[idx],...patch,updatedAt:new Date().toISOString()}; saveTasksStore(tasks); renderTasksBoard(); showToast("המשימה עודכנה"); }
 function renderHistory() { /* unchanged-ish */
   const clientFilter = (historyClientFilter.value || "").trim();
   const typeFilter = historyTypeFilter.value || "";
@@ -222,10 +264,10 @@ function startNewMeeting() {
   showToast("נפתחה פגישה חדשה");
 }
 function deleteHistoryItem(id) { if (!confirm("למחוק את הפגישה מההיסטוריה?")) return; saveHistory(getHistory().filter((item) => item.id !== id)); renderHistory(); }
-function switchTab(tab) { const analysisActive = tab === "analysis"; analysisTabBtn.classList.toggle("active", analysisActive); historyTabBtn.classList.toggle("active", !analysisActive); analysisView.classList.toggle("hidden", !analysisActive); historyView.classList.toggle("hidden", analysisActive); }
+function switchTab(tab) { const analysisActive = tab === "analysis"; const historyActive = tab === "history"; const tasksActive = tab === "tasks"; analysisTabBtn.classList.toggle("active", analysisActive); historyTabBtn.classList.toggle("active", historyActive); tasksTabBtn.classList.toggle("active", tasksActive); analysisView.classList.toggle("hidden", !analysisActive); historyView.classList.toggle("hidden", !historyActive); tasksView.classList.toggle("hidden", !tasksActive); }
 
 function exportAnalysisPdf() {
-  if (!lastAnalysis) { alert("יש לבצע ניתוח לפני ייצוא PDF."); return; }
+  if (!lastAnalysis) { showToast("אין ניתוח פעיל לייצוא"); return; }
   try {
     const md = lastAnalysis.meetingMetadata || {};
     const clientName = (document.getElementById("clientName")?.value?.trim() || md.clientName || "meeting").replace(/\s+/g, "-");
@@ -234,15 +276,17 @@ function exportAnalysisPdf() {
     const sections = [["סיכום מנהלים", lastAnalysis.executiveSummary],["מטרת הפגישה", lastAnalysis.meetingGoal],["צרכי לקוח", lastAnalysis.clientNeeds],["נושאים שנדונו", lastAnalysis.topicsCovered],["שאלות לקוח", lastAnalysis.clientQuestions],["תקלות ובאגים", lastAnalysis.issuesAndBugs],["החלטות", lastAnalysis.decisionsMade],["משימות", taskState.map((t)=>`${t.checked ? "☑" : "☐"} ${t.title || "משימה"} - ${t.status || "פתוחה"}`)],["סיכונים", lastAnalysis.risks],["משוב מטמיע", [...(lastAnalysis.implementerFeedback?.whatWentWell || []), ...(lastAnalysis.implementerFeedback?.whatCouldImprove || [])]],["אג׳נדה לפגישה הבאה", lastAnalysis.nextMeetingAgenda]];
     const renderField = (label, value) => `<p><strong>${label}:</strong> ${safeText(value, "לא זוהה")}</p>`;
     const renderSection = (title, value, isPre = false) => `<section class="section"><h2>${title}</h2>${isPre ? `<pre>${value || ""}</pre>` : Array.isArray(value) ? `<ul>${renderList(value)}</ul>` : `<p>${safeText(value, "לא זוהה")}</p>`}</section>`;
-    const html = `<!doctype html><html lang="he" dir="rtl"><head><meta charset="UTF-8"/><title>${fileName}</title><style>@page{size:A4;margin:16mm;}body{direction:rtl;text-align:right;font-family:Arial,sans-serif;line-height:1.6;color:#111;}h1{margin:0;font-size:24px}.section{page-break-inside:avoid;margin-bottom:18px;}ul{padding-right:24px;}pre{white-space:pre-wrap;direction:rtl;text-align:right;background:#f5f5f5;padding:10px;border-radius:8px;}.pdf-header{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #d7dfec}.pdf-header img{width:42px;height:42px;object-fit:contain}.pdf-subtitle{margin-top:4px;color:#334a65;font-size:14px}</style></head><body><header class="pdf-header"><img src="./assets/logo.svg" alt="Implanter OS"/><div><h1>Implanter OS</h1><p class="pdf-subtitle">מערכת ניתוח פגישות הטמעה</p></div></header>${renderField("שם לקוח", md.clientName || document.getElementById("clientName")?.value || "פגישה ללא שם")}${renderField("תאריך פגישה", md.meetingDate || document.getElementById("meetingDate")?.value)}${renderField("סוג פגישה", md.meetingType || document.getElementById("meetingType")?.value)}${renderField("משתתפים", md.participants)}${sections.map(([t,v])=>renderSection(t,v)).join("")}${renderSection("מייל המשך", lastAnalysis.followUpEmail || "", true)}<button onclick="window.print()">הדפס / שמור כ-PDF</button></body></html>`;
+    const html = `<!doctype html><html lang="he" dir="rtl"><head><meta charset="UTF-8"/><title>סיכום פגישה - Implanter OS</title><style>@page { size: A4; margin: 16mm; } body { direction: rtl; text-align: right; font-family: Arial, sans-serif; color: #111827; line-height: 1.6; } .section { page-break-inside: avoid; margin-bottom: 18px; } h1, h2, h3 { color: #0f2f5f; } ul { padding-right: 22px; } .email-preview { white-space: pre-wrap; border: 1px solid #dbe5f0; padding: 12px; border-radius: 10px; }</style></head><body><header class="pdf-header"><img src="./assets/logo.svg" alt="Implanter OS"/><div><h1>Implanter OS</h1><p class="pdf-subtitle">מערכת ניתוח פגישות הטמעה</p></div></header>${renderField("שם לקוח", md.clientName || document.getElementById("clientName")?.value || "פגישה ללא שם")}${renderField("תאריך פגישה", md.meetingDate || document.getElementById("meetingDate")?.value)}${renderField("סוג פגישה", md.meetingType || document.getElementById("meetingType")?.value)}${renderField("משתתפים", md.participants)}${sections.map(([t,v])=>renderSection(t,v)).join("")}<section class="section"><h2>מייל המשך</h2><div class="email-preview">${lastAnalysis.followUpEmail || ""}</div></section></body></html>`;
     const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1024,height=768");
     if (!printWindow) throw new Error("לא ניתן לפתוח חלון הדפסה.");
     printWindow.document.open();
     printWindow.document.write(html);
     printWindow.document.close();
     printWindow.document.title = fileName;
-    showToast("חלון ייצוא PDF נפתח");
-  } catch { alert("אירעה שגיאה בייצוא ל-PDF. ניתן להמשיך לעבוד ולנסות שוב."); }
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 500);
+    showToast("חלון PDF נפתח");
+  } catch { showToast("ייצוא PDF נכשל"); }
 }
 async function analyzeMeeting(payload) { const response = await fetch(`${API_BASE_URL}/api/analyze`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || data.details || "כשל בניתוח הפגישה בשרת."); return data; }
 async function handleFile(file) { if (!file) return; const lowerName = file.name.toLowerCase(); if (lowerName.endsWith(".txt")) { transcriptEl.value = await file.text(); uploadStatus.textContent = `נטען: ${file.name} | TXT`; return; } if (lowerName.endsWith(".docx")) { try { const buffer = await file.arrayBuffer(); const result = await window.mammoth.extractRawText({ arrayBuffer: buffer }); transcriptEl.value = result.value || ""; uploadStatus.textContent = `נטען: ${file.name} | DOCX`; } catch { uploadStatus.textContent = "שגיאה בקריאת DOCX"; } return; } uploadStatus.textContent = "ניתן להעלות רק TXT או DOCX"; }
@@ -285,3 +329,10 @@ historyList?.addEventListener("click", (event) => { const id = event.target?.dat
 
 try { localStorage.setItem("__implanter_test", "1"); localStorage.removeItem("__implanter_test"); } catch { localStorageAvailable = false; storageWarning.classList.remove("hidden"); }
 renderHistory();
+
+addTasksBtn?.addEventListener("click", addCurrentAnalysisTasksToBoard);
+tasksTabBtn?.addEventListener("click", () => switchTab("tasks"));
+[tasksSearchFilter, tasksClientFilter, tasksOwnerFilter, tasksStatusFilter, tasksPriorityFilter, tasksDateFromFilter, tasksDateToFilter].forEach((el)=>el?.addEventListener("input", renderTasksBoard));
+tasksBoard?.addEventListener("change", (event) => { const card = event.target.closest(".task-card"); if (!card) return; const id = card.dataset.id; if (event.target.classList.contains("board-check")) return updateBoardTask(id, { status: event.target.checked ? "בוצעה" : "פתוחה" }); if (event.target.classList.contains("board-owner")) return updateBoardTask(id, { owner: event.target.value }); if (event.target.classList.contains("board-priority")) return updateBoardTask(id, { priority: event.target.value }); if (event.target.classList.contains("board-status")) return updateBoardTask(id, { status: event.target.value }); });
+tasksBoard?.addEventListener("click", (event) => { const card = event.target.closest(".task-card"); if (!card) return; const id = card.dataset.id; const task = getTasksStore().find((t)=>t.id===id); if (event.target.classList.contains("delete-task")) { saveTasksStore(getTasksStore().filter((t)=>t.id!==id)); renderTasksBoard(); showToast("המשימה נמחקה"); } if (event.target.classList.contains("open-task-meeting") && task?.meetingId) loadHistoryAnalysis(task.meetingId); });
+renderTasksBoard();
