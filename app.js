@@ -12,6 +12,7 @@ const metadataCard = document.getElementById("metadataCard");
 const metadataContent = document.getElementById("metadataContent");
 const emptyState = document.getElementById("emptyState");
 const dashboard = document.getElementById("dashboard");
+const statsStrip = document.getElementById("statsStrip");
 const summaryCards = document.getElementById("summaryCards");
 const summaryText = document.getElementById("summaryText");
 const riskBadge = document.getElementById("riskBadge");
@@ -118,6 +119,7 @@ function renderAnalysis(data) {
   riskList.innerHTML = risks.length ? risks.map((risk) => `<li>${risk}</li>`).join("") : "<li>לא זוהו סיכונים מהותיים</li>";
   followupEmail.textContent = data.followUpEmail || "";
   const riskLevel = getRiskLevel(risks);
+  statsStrip.innerHTML = `<article class="stat-item"><span>לקוח</span><strong>${safeText(data.meetingMetadata?.clientName || document.getElementById("clientName")?.value || "לא זוהה")}</strong></article><article class="stat-item"><span>תאריך</span><strong>${safeText(data.meetingMetadata?.meetingDate || document.getElementById("meetingDate")?.value || "לא זוהה")}</strong></article><article class="stat-item"><span>מספר משימות</span><strong>${taskState.length}</strong></article><article class="stat-item"><span>רמת סיכון</span><strong>${riskLevel}</strong></article>`;
   riskBadge.textContent = riskLevel;
   riskBadge.className = `risk-badge ${riskClassByLevel[riskLevel] || "low"}`;
   confidenceBadge.textContent = "רמת ביטחון: גבוהה";
@@ -208,6 +210,7 @@ function resetMeetingWorkspace() {
   taskState = [];
   setLoading(false);
   metadataCard.classList.add("hidden"); dashboard.classList.add("hidden"); emptyState.classList.remove("hidden");
+  if (statsStrip) statsStrip.innerHTML = "";
 }
 
 function startNewMeeting() {

@@ -10,7 +10,8 @@
     <main class="container">
       <header class="panel hero">
         <h1>Implanter OS</h1>
-        <p class="subtitle">דשבורד ניתוח פגישות והטמעה</p>
+        <p class="subtitle">דשבורד ניתוח פגישות והטמעה עם חוויית ניהול מתקדמת</p>
+        <span class="hero-badge">Powered by מנתח ההטמעה</span>
       </header>
 
       <section class="panel" aria-label="ניווט ראשי">
@@ -76,9 +77,10 @@
 
         <section id="results" class="panel" aria-live="polite">
           <h2>תוצאות ניתוח</h2>
-          <article id="analysisLoadingPanel" class="loading-panel hidden"><div class="spinner"></div><h3>מנתח ההטמעה בפעולה</h3><p class="muted">קורא את התמלול, מזהה שאלות לקוח, משימות, תקלות ונקודות להמשך</p><ol><li>קורא את תמליל הפגישה</li><li>מזהה משתתפים ונושאים מרכזיים</li><li>מפריד בין הסברים, שאלות ומשימות</li><li>בונה סיכום, משימות ומייל המשך</li></ol></article><div id="emptyState" class="empty-state">עדיין לא בוצע ניתוח. העלו תמליל ולחצו "נתח פגישה".</div>
+          <article id="analysisLoadingPanel" class="loading-panel hidden"><div class="spinner"></div><h3>מנתח ההטמעה בפעולה</h3><p class="muted">קורא את התמלול, מזהה שאלות לקוח, משימות, תקלות ונקודות להמשך</p><ol><li>קורא את תמליל הפגישה</li><li>מזהה משתתפים ונושאים מרכזיים</li><li>מפריד בין הסברים, שאלות ומשימות</li><li>בונה סיכום, משימות ומייל המשך</li></ol><div class="skeleton-grid" aria-hidden="true"><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div></div></article><div id="emptyState" class="empty-state">עדיין לא בוצע ניתוח. העלו תמליל ולחצו "נתח פגישה".</div>
 
           <div id="dashboard" class="hidden">
+            <div id="statsStrip" class="stats-strip"></div>
             <div id="summaryCards" class="summary-grid"></div>
 
             <div class="analysis-grid">
