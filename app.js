@@ -32,6 +32,7 @@ const copyTasksBtn = document.getElementById("copyTasksBtn");
 const fileInput = document.getElementById("fileInput");
 const dropZone = document.getElementById("dropZone");
 const uploadStatus = document.getElementById("uploadStatus");
+const uploadBtn = document.getElementById("uploadBtn");
 const analysisTabBtn = document.getElementById("analysisTabBtn");
 const historyTabBtn = document.getElementById("historyTabBtn");
 const tasksTabBtn = document.getElementById("tasksTabBtn");
@@ -301,7 +302,36 @@ function exportAnalysisPdf() {
   } catch { showToast("אירעה שגיאה בייצוא ל-PDF"); }
 }
 async function analyzeMeeting(payload) { const response = await fetch(`${API_BASE_URL}/api/analyze`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || data.details || "כשל בניתוח הפגישה בשרת."); return data; }
-async function handleFile(file) { if (!file) return; const lowerName = file.name.toLowerCase(); if (lowerName.endsWith(".txt")) { transcriptEl.value = await file.text(); uploadStatus.textContent = `נטען: ${file.name} | TXT`; return; } if (lowerName.endsWith(".docx")) { try { const buffer = await file.arrayBuffer(); const result = await window.mammoth.extractRawText({ arrayBuffer: buffer }); transcriptEl.value = result.value || ""; uploadStatus.textContent = `נטען: ${file.name} | DOCX`; } catch { uploadStatus.textContent = "שגיאה בקריאת DOCX"; } return; } uploadStatus.textContent = "ניתן להעלות רק TXT או DOCX"; }
+async function handleFile(file) {
+  console.log("File selected");
+  if (!file) return;
+  console.log(`File selected: ${file.name}`);
+  const lowerName = file.name.toLowerCase();
+
+  try {
+    if (lowerName.endsWith(".txt")) {
+      const text = await file.text();
+      transcriptEl.value = text;
+      uploadStatus.textContent = `נטען: ${file.name} | TXT`;
+      console.log("TXT loaded");
+      return;
+    }
+
+    if (lowerName.endsWith(".docx")) {
+      const buffer = await file.arrayBuffer();
+      const result = await window.mammoth.extractRawText({ arrayBuffer: buffer });
+      transcriptEl.value = result.value || "";
+      uploadStatus.textContent = `נטען: ${file.name} | DOCX`;
+      console.log("DOCX loaded");
+      return;
+    }
+
+    uploadStatus.textContent = "ניתן להעלות רק קובצי TXT או DOCX";
+  } catch (error) {
+    console.error("File load error", error);
+    uploadStatus.textContent = "שגיאה בטעינת הקובץ";
+  }
+}
 
 form?.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -324,12 +354,54 @@ taskList?.addEventListener("change", (event) => {
 topSaveMeetingBtn?.addEventListener("click", saveOrUpdateMeeting);
 topNewMeetingBtn?.addEventListener("click", startNewMeeting);
 clearMeetingBtn?.addEventListener("click", clearMeeting);
-fileInput?.addEventListener("change", (event) => handleFile(event.target.files[0]));
-["dragenter", "dragover"].forEach((n) => dropZone?.addEventListener(n, (e) => { e.preventDefault(); dropZone.classList.add("active"); }));
-["dragleave", "drop"].forEach((n) => dropZone?.addEventListener(n, (e) => { e.preventDefault(); dropZone.classList.remove("active"); }));
-dropZone?.addEventListener("drop", (event) => handleFile(event.dataTransfer.files[0]));
-dropZone?.addEventListener("click", () => fileInput?.click());
-dropZone?.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") fileInput?.click(); });
+console.log("App loaded");
+
+fileInput?.addEventListener("change", (event) => {
+  console.log("File input changed");
+  handleFile(event.target.files?.[0]);
+});
+
+["dragenter", "dragover"].forEach((n) =>
+  dropZone?.addEventListener(n, (event) => {
+    event.preventDefault();
+    dropZone.classList.add("active");
+  })
+);
+
+["dragleave", "drop"].forEach((n) =>
+  dropZone?.addEventListener(n, (event) => {
+    event.preventDefault();
+    dropZone.classList.remove("active");
+  })
+);
+
+dropZone?.addEventListener("drop", (event) => {
+  event.preventDefault();
+  const [file] = event.dataTransfer?.files || [];
+  handleFile(file);
+});
+
+const triggerFilePicker = (event) => {
+  if (event?.target === fileInput) return;
+  fileInput?.click();
+};
+
+dropZone?.addEventListener("click", (event) => {
+  if (event.target === uploadBtn) return;
+  triggerFilePicker(event);
+});
+
+uploadBtn?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  triggerFilePicker(event);
+});
+
+dropZone?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    triggerFilePicker(event);
+  }
+});
 copySummaryBtn?.addEventListener("click", () => { navigator.clipboard.writeText(summaryText?.textContent || ""); showToast("הועתק ללוח"); });
 copyEmailBtn?.addEventListener("click", () => { navigator.clipboard.writeText(followupEmail?.textContent || ""); showToast("הועתק ללוח"); });
 copyTasksBtn?.addEventListener("click", () => { navigator.clipboard.writeText(taskState.map((task) => `- [${task.checked ? "x" : " "}] ${task.title} | ${task.owner} | ${task.priority} | ${task.status}`).join("\n") || "לא זוהו משימות"); showToast("הועתק ללוח"); });
