@@ -204,10 +204,26 @@ function addCurrentAnalysisTasksToBoard() {
   renderTasksBoard();
   showToast("המשימות נוספו ללוח המשימות");
 }
+function refreshTasksCompanyFilterOptions() {
+  if (!tasksClientFilter) return;
+  const selectedValue = tasksClientFilter.value || "";
+  const tasks = getTasksStore();
+  const fallbackName = "פגישה ללא שם";
+  const companies = [...new Set(tasks.map((task) => (task.clientName || "").trim() || fallbackName))].sort((a, b) => a.localeCompare(b, "he"));
+
+  tasksClientFilter.innerHTML = [
+    `<option value="">כל החברות</option>`,
+    ...companies.map((company) => `<option value="${safeText(company)}">${safeText(company)}</option>`)
+  ].join("");
+
+  tasksClientFilter.value = companies.includes(selectedValue) ? selectedValue : "";
+}
+
 function renderTasksBoard() {
+ refreshTasksCompanyFilterOptions();
  const tasks = getTasksStore(); const search=(tasksSearchFilter?.value||"").trim(); const client=(tasksClientFilter?.value||"").trim();
  const owner=tasksOwnerFilter?.value||""; const status=tasksStatusFilter?.value||""; const priority=tasksPriorityFilter?.value||""; const df=tasksDateFromFilter?.value||""; const dt=tasksDateToFilter?.value||"";
- const filtered = tasks.filter((t)=> (!search || `${t.title} ${t.description} ${t.source}`.includes(search)) && (!client || (t.clientName||"").includes(client)) && (!owner || t.owner===owner) && (!status || t.status===status) && (!priority || t.priority===priority) && (!df || (t.meetingDate && t.meetingDate>=df)) && (!dt || (t.meetingDate && t.meetingDate<=dt)));
+ const filtered = tasks.filter((t)=> (!search || `${t.title} ${t.description} ${t.source}`.includes(search)) && (!client || (((t.clientName||"").trim() || "פגישה ללא שם")===client)) && (!owner || t.owner===owner) && (!status || t.status===status) && (!priority || t.priority===priority) && (!df || (t.meetingDate && t.meetingDate>=df)) && (!dt || (t.meetingDate && t.meetingDate<=dt)));
  if (!filtered.length) { tasksBoard.innerHTML='<p class="muted">לא נמצאו משימות תואמות.</p>'; return; }
  const groups = filtered.reduce((acc,t)=>{ const key=(t.clientName||"").trim()||"פגישה ללא שם"; (acc[key]=acc[key]||[]).push(t); return acc; },{});
  tasksBoard.innerHTML = Object.entries(groups).map(([clientName,items])=>{ const openCount=items.filter((t)=>t.status!=="בוצעה").length; const highCount=items.filter((t)=>t.priority==="גבוהה").length; const lastDate=items.map((t)=>t.meetingDate||"").sort().reverse()[0]||"לא זוהה"; return `<article class="client-group"><h3>${clientName}</h3><p class="muted">פתוחות: ${openCount} | עדיפות גבוהה: ${highCount} | פגישה אחרונה: ${lastDate}</p><div class="task-cards">${items.map((t)=>`<div class="task-card" data-id="${t.id}"><input type="checkbox" class="board-check" ${t.status==="בוצעה"?"checked":""}/><div><strong>${t.title}</strong><p>${t.description||""}</p><p class="muted">תאריך: ${t.meetingDate||"לא זוהה"} | מקור: ${t.source||""}</p></div><select class="board-owner"><option ${t.owner==="אני"?"selected":""}>אני</option><option ${t.owner==="לקוח"?"selected":""}>לקוח</option><option ${t.owner==="תמיכה"?"selected":""}>תמיכה</option><option ${t.owner==="פיתוח"?"selected":""}>פיתוח</option></select><select class="board-priority"><option ${t.priority==="גבוהה"?"selected":""}>גבוהה</option><option ${t.priority==="בינונית"?"selected":""}>בינונית</option><option ${t.priority==="נמוכה"?"selected":""}>נמוכה</option></select><select class="board-status"><option ${t.status==="פתוחה"?"selected":""}>פתוחה</option><option ${t.status==="בטיפול"?"selected":""}>בטיפול</option><option ${t.status==="ממתין ללקוח"?"selected":""}>ממתין ללקוח</option><option ${t.status==="ממתין לפיתוח"?"selected":""}>ממתין לפיתוח</option><option ${t.status==="בוצעה"?"selected":""}>בוצעה</option></select><button class="ghost open-task-meeting" ${t.meetingId?"":"disabled"}>פתח פגישה</button><button class="danger delete-task">מחק משימה</button></div>`).join("")}</div></article>`}).join('');
