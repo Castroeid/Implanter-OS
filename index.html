@@ -56,7 +56,7 @@
             <div id="dropZone" class="drop-zone full-width" role="button" tabindex="0" aria-label="העלאת קובץ תמלול">
               <p>גררו ושחררו קובץ תמלול כאן (TXT או DOCX)</p>
               <p class="muted">או</p>
-              <label class="upload-btn" for="fileInput">בחרו קובץ</label>
+              <button id="uploadBtn" class="upload-btn" type="button">בחרו קובץ</button>
               <input id="fileInput" type="file" accept=".txt,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden />
               <p id="uploadStatus" class="upload-status">לא נבחר קובץ</p>
             </div>
@@ -164,7 +164,7 @@
     </main>
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-    <script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
-    <script src="./app.js" type="module"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mammoth/mammoth.browser.min.js"></script>
+    <script src="./app.js"></script>
   </body>
 </html>
