@@ -147,7 +147,10 @@
       </section>
 
       <section id="tasksView" class="panel hidden" aria-labelledby="tasks-title">
-        <h2 id="tasks-title">משימות</h2>
+        <div class="tasks-header"><h2 id="tasks-title">משימות</h2><button id="newTaskBtn" type="button">משימה חדשה</button></div>
+        <div id="tasksKpis" class="tasks-kpis"></div>
+        <div class="weekly-settings card"><h3>דוח משימות שבועי</h3><div class="settings-grid"><label>אימייל יעד<input id="weeklyEmailRecipient" type="email" /></label><label>יום שליחה<select id="weeklyEmailDay"><option value="0">יום ראשון</option><option value="1">יום שני</option><option value="2">יום שלישי</option><option value="3">יום רביעי</option><option value="4">יום חמישי</option><option value="5">יום שישי</option><option value="6">שבת</option></select></label><label>שעת שליחה<input id="weeklyEmailTime" type="time" /></label><label class="toggle-row">הפעלה<input id="weeklyEmailEnabled" type="checkbox" /></label><button id="saveWeeklySettingsBtn" class="ghost" type="button">שמור הגדרות דוח</button></div></div>
+        <div id="manualTaskFormWrap" class="manual-task-wrap hidden"></div>
         <div class="tasks-filters">
           <input id="tasksSearchFilter" type="text" placeholder="חיפוש טקסט" />
           <select id="tasksClientFilter"><option value="">כל החברות</option></select>

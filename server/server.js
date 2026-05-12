@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import OpenAI from "openai";
+import nodemailer from "nodemailer";
+import cron from "node-cron";
 
 dotenv.config();
 
@@ -19,6 +21,9 @@ app.use(express.json({ limit: "20mb" }));
 const client = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
+let weeklySettings = { recipientEmail: process.env.EMAIL_TO_DEFAULT || "liron@mida.co.il", sendDay: "0", sendTime: "08:30", enabled: true };
+let tasksSnapshot = [];
+const transporter = process.env.EMAIL_USER && process.env.EMAIL_PASS ? nodemailer.createTransport({ service: "gmail", auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } }) : null;
 
 app.get("/", (_req, res) => {
   res.send("Implanter OS API is running. Use /api/health or POST /api/analyze");
@@ -26,6 +31,27 @@ app.get("/", (_req, res) => {
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "implanter-os-api" });
+});
+app.post("/api/weekly-digest/settings", (req, res) => { weeklySettings = { ...weeklySettings, ...(req.body || {}) }; res.json({ ok: true, weeklySettings }); });
+app.post("/api/tasks/snapshot", (req, res) => { tasksSnapshot = Array.isArray(req.body?.tasks) ? req.body.tasks : []; res.json({ ok: true, count: tasksSnapshot.length }); });
+app.post("/api/weekly-digest/send", async (_req, res) => {
+  try { await sendWeeklyDigest(); res.json({ ok: true }); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+async function sendWeeklyDigest() {
+  if (!weeklySettings.enabled || !transporter) return;
+  const openTasks = tasksSnapshot.filter((t) => !["בוצעה", "הושלמה"].includes(t.status));
+  const grouped = openTasks.reduce((a, t) => ((a[t.clientName || "ללא חברה"] = a[t.clientName || "ללא חברה"] || []).push(t), a), {});
+  const high = openTasks.filter((t) => t.priority === "גבוהה").length;
+  const completed = tasksSnapshot.filter((t) => ["בוצעה", "הושלמה"].includes(t.status)).length;
+  const waiting = openTasks.filter((t) => String(t.status).includes("ממתינ")).length;
+  const html = `<div dir="rtl" style="font-family:Arial;padding:20px"><h2>Implanter OS</h2><h3>דו\"ח משימות שבועי</h3><p>פתוחות: ${openTasks.length} | דחופות: ${high} | הושלמו: ${completed} | ממתינות: ${waiting}</p>${Object.entries(grouped).map(([c,items])=>`<h4>${c}</h4><ul>${items.map((t)=>`<li><b>${t.title}</b> - ${t.description||""} | ${t.priority} | ${t.status} | ${t.owner||""} | יעד: ${t.dueDate||"-"} | מקור: ${t.sourceType||""}</li>`).join("")}</ul>`).join("")}<h4>משימות דחופות</h4><ul>${openTasks.filter((t)=>t.priority==="גבוהה").map((t)=>`<li>${t.title}</li>`).join("")}</ul><hr><p>Generated automatically by Implanter OS.</p></div>`;
+  await transporter.sendMail({ from: process.env.EMAIL_USER, to: weeklySettings.recipientEmail || process.env.EMAIL_TO_DEFAULT, subject: "דו\"ח משימות שבועי - Implanter OS", html });
+}
+cron.schedule("*/5 * * * *", async () => {
+  const now = new Date();
+  const day = String(now.getUTCDay());
+  const hhmm = `${String(now.getUTCHours()).padStart(2, "0")}:${String(now.getUTCMinutes()).padStart(2, "0")}`;
+  if (weeklySettings.enabled && weeklySettings.sendDay === day && weeklySettings.sendTime === hhmm) await sendWeeklyDigest();
 });
 
 const ANALYSIS_SCHEMA = {
