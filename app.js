@@ -1,6 +1,7 @@
 const API_BASE_URL = "https://implanter-os.onrender.com";
 const HISTORY_KEY = "implanter_os_meeting_history_v1";
 const TASKS_KEY = "implanter_os_tasks";
+const WEEKLY_SETTINGS_KEY = "implanter_os_weekly_email_settings_v1";
 
 const form = document.getElementById("meeting-form");
 const transcriptEl = document.getElementById("transcript");
@@ -40,6 +41,14 @@ const analysisView = document.getElementById("analysisView");
 const historyView = document.getElementById("historyView");
 const tasksView = document.getElementById("tasksView");
 const tasksBoard = document.getElementById("tasksBoard");
+const tasksKpis = document.getElementById("tasksKpis");
+const newTaskBtn = document.getElementById("newTaskBtn");
+const manualTaskFormWrap = document.getElementById("manualTaskFormWrap");
+const weeklyEmailRecipient = document.getElementById("weeklyEmailRecipient");
+const weeklyEmailDay = document.getElementById("weeklyEmailDay");
+const weeklyEmailTime = document.getElementById("weeklyEmailTime");
+const weeklyEmailEnabled = document.getElementById("weeklyEmailEnabled");
+const saveWeeklySettingsBtn = document.getElementById("saveWeeklySettingsBtn");
 const addTasksBtn = document.getElementById("addTasksBtn");
 const tasksSearchFilter = document.getElementById("tasksSearchFilter");
 const tasksClientFilter = document.getElementById("tasksClientFilter");
@@ -185,13 +194,14 @@ function saveOrUpdateMeeting() {
   showToast("הפגישה נשמרה בהצלחה");
 }
 function getTasksStore() { if (!localStorageAvailable) return []; try { return JSON.parse(localStorage.getItem(TASKS_KEY) || "[]"); } catch { return []; } }
-function saveTasksStore(items) { if (!localStorageAvailable) return; localStorage.setItem(TASKS_KEY, JSON.stringify(items)); }
+function saveTasksStore(items) { if (!localStorageAvailable) return; localStorage.setItem(TASKS_KEY, JSON.stringify(items)); fetch(`${API_BASE_URL}/api/tasks/snapshot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tasks: items }) }).catch(() => null); }
 function normalizeTask(task, meetingInfo = {}) {
   const now = new Date().toISOString();
   return {
     id: task.id || crypto.randomUUID(), title: task.title || "משימה ללא כותרת", description: task.description || "",
     clientName: task.clientName || meetingInfo.clientName || "לקוח לא זוהה", meetingDate: task.meetingDate || meetingInfo.meetingDate || "", meetingId: task.meetingId || meetingInfo.meetingId || null,
     owner: task.owner || "אני", priority: task.priority || "בינונית", status: task.status || "פתוחה", source: task.source || "ניתוח פגישה",
+    sourceType: task.sourceType || (task.meetingId ? "AI" : "Manual"), dueDate: task.dueDate || "", notes: task.notes || "",
     createdAt: task.createdAt || now, updatedAt: now
   };
 }
@@ -200,10 +210,31 @@ function addCurrentAnalysisTasksToBoard() {
   const meetingInfo = { clientName: document.getElementById("clientName")?.value?.trim() || lastAnalysis.meetingMetadata?.clientName || "לקוח לא זוהה", meetingDate: document.getElementById("meetingDate")?.value || lastAnalysis.meetingMetadata?.meetingDate || "", meetingId: currentMeetingId };
   const existing = getTasksStore();
   const existingKeys = new Set(existing.map((t) => `${t.meetingId || ""}__${(t.title || "").trim()}`));
-  const toAdd = taskState.map((task) => normalizeTask({ ...task, source: task.source || "מתוך ניתוח פגישה" }, meetingInfo)).filter((task) => !existingKeys.has(`${task.meetingId || ""}__${task.title.trim()}`));
+  const toAdd = taskState.map((task) => normalizeTask({ ...task, source: task.source || "מתוך ניתוח פגישה", sourceType: "AI" }, meetingInfo)).filter((task) => !existingKeys.has(`${task.meetingId || ""}__${task.title.trim()}`));
   saveTasksStore([...toAdd, ...existing]);
   renderTasksBoard();
   showToast("המשימות נוספו ללוח המשימות");
+}
+function getWeeklySettings() {
+  const fallback = { recipientEmail: "liron@mida.co.il", sendDay: "0", sendTime: "08:30", enabled: true };
+  if (!localStorageAvailable) return fallback;
+  try { return { ...fallback, ...JSON.parse(localStorage.getItem(WEEKLY_SETTINGS_KEY) || "{}") }; } catch { return fallback; }
+}
+function saveWeeklySettings(settings) {
+  if (!localStorageAvailable) return;
+  localStorage.setItem(WEEKLY_SETTINGS_KEY, JSON.stringify(settings));
+  fetch(`${API_BASE_URL}/api/weekly-digest/settings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) }).catch(() => null);
+}
+function renderManualTaskForm() {
+  manualTaskFormWrap.innerHTML = `<form id="manualTaskForm" class="manual-task-form card"><label>חברה/לקוח<input name="clientName" required /></label><label>כותרת משימה<input name="title" required /></label><label class="full-width">תיאור<textarea name="description" rows="3"></textarea></label><label>עדיפות<select name="priority"><option>נמוכה</option><option selected>בינונית</option><option>גבוהה</option></select></label><label>סטטוס<select name="status"><option>פתוחה</option><option>בתהליך</option><option>ממתינה</option><option>הושלמה</option></select></label><label>אחראי<input name="owner" value="אני" /></label><label>תאריך יעד<input name="dueDate" type="date" /></label><label class="full-width">הערות<textarea name="notes" rows="2"></textarea></label><div class="action-row full-width"><button type="submit">שמור משימה</button><button type="button" id="cancelManualTaskBtn" class="ghost">בטל</button></div></form>`;
+  manualTaskFormWrap.classList.remove("hidden");
+}
+function renderTasksKpis(tasks) {
+  const open = tasks.filter((t) => ["פתוחה", "בתהליך", "בטיפול", "ממתינה", "ממתין ללקוח", "ממתין לפיתוח"].includes(t.status)).length;
+  const inProgress = tasks.filter((t) => ["בתהליך", "בטיפול"].includes(t.status)).length;
+  const done = tasks.filter((t) => ["בוצעה", "הושלמה"].includes(t.status)).length;
+  const urgent = tasks.filter((t) => t.priority === "גבוהה" && !["בוצעה", "הושלמה"].includes(t.status)).length;
+  tasksKpis.innerHTML = `<article class="summary-card"><span>פתוחות</span><strong>${open}</strong></article><article class="summary-card"><span>בתהליך</span><strong>${inProgress}</strong></article><article class="summary-card"><span>הושלמו</span><strong>${done}</strong></article><article class="summary-card"><span>דחופות</span><strong>${urgent}</strong></article>`;
 }
 function refreshTasksCompanyFilterOptions() {
   if (!tasksClientFilter) return;
@@ -224,10 +255,11 @@ function renderTasksBoard() {
  refreshTasksCompanyFilterOptions();
  const tasks = getTasksStore(); const search=(tasksSearchFilter?.value||"").trim(); const client=(tasksClientFilter?.value||"").trim();
  const owner=tasksOwnerFilter?.value||""; const status=tasksStatusFilter?.value||""; const priority=tasksPriorityFilter?.value||""; const df=tasksDateFromFilter?.value||""; const dt=tasksDateToFilter?.value||"";
- const filtered = tasks.filter((t)=> (!search || `${t.title} ${t.description} ${t.source}`.includes(search)) && (!client || (((t.clientName||"").trim() || "פגישה ללא שם")===client)) && (!owner || t.owner===owner) && (!status || t.status===status) && (!priority || t.priority===priority) && (!df || (t.meetingDate && t.meetingDate>=df)) && (!dt || (t.meetingDate && t.meetingDate<=dt)));
+ renderTasksKpis(tasks);
+ const filtered = tasks.filter((t)=> (!search || `${t.title} ${t.description} ${t.source} ${t.clientName}`.includes(search)) && (!client || (((t.clientName||"").trim() || "פגישה ללא שם")===client)) && (!owner || t.owner===owner) && (!status || t.status===status) && (!priority || t.priority===priority) && (!df || ((t.dueDate||t.meetingDate) && (t.dueDate||t.meetingDate)>=df)) && (!dt || ((t.dueDate||t.meetingDate) && (t.dueDate||t.meetingDate)<=dt)));
  if (!filtered.length) { tasksBoard.innerHTML='<p class="muted">לא נמצאו משימות תואמות.</p>'; return; }
  const groups = filtered.reduce((acc,t)=>{ const key=(t.clientName||"").trim()||"פגישה ללא שם"; (acc[key]=acc[key]||[]).push(t); return acc; },{});
- tasksBoard.innerHTML = Object.entries(groups).map(([clientName,items])=>{ const openCount=items.filter((t)=>t.status!=="בוצעה").length; const highCount=items.filter((t)=>t.priority==="גבוהה").length; const lastDate=items.map((t)=>t.meetingDate||"").sort().reverse()[0]||"לא זוהה"; return `<article class="client-group"><h3>${clientName}</h3><p class="muted">פתוחות: ${openCount} | עדיפות גבוהה: ${highCount} | פגישה אחרונה: ${lastDate}</p><div class="task-cards">${items.map((t)=>`<div class="task-card" data-id="${t.id}"><input type="checkbox" class="board-check" ${t.status==="בוצעה"?"checked":""}/><div><strong>${t.title}</strong><p>${t.description||""}</p><p class="muted">תאריך: ${t.meetingDate||"לא זוהה"} | מקור: ${t.source||""}</p></div><select class="board-owner"><option ${t.owner==="אני"?"selected":""}>אני</option><option ${t.owner==="לקוח"?"selected":""}>לקוח</option><option ${t.owner==="תמיכה"?"selected":""}>תמיכה</option><option ${t.owner==="פיתוח"?"selected":""}>פיתוח</option></select><select class="board-priority"><option ${t.priority==="גבוהה"?"selected":""}>גבוהה</option><option ${t.priority==="בינונית"?"selected":""}>בינונית</option><option ${t.priority==="נמוכה"?"selected":""}>נמוכה</option></select><select class="board-status"><option ${t.status==="פתוחה"?"selected":""}>פתוחה</option><option ${t.status==="בטיפול"?"selected":""}>בטיפול</option><option ${t.status==="ממתין ללקוח"?"selected":""}>ממתין ללקוח</option><option ${t.status==="ממתין לפיתוח"?"selected":""}>ממתין לפיתוח</option><option ${t.status==="בוצעה"?"selected":""}>בוצעה</option></select><button class="ghost open-task-meeting" ${t.meetingId?"":"disabled"}>פתח פגישה</button><button class="danger delete-task">מחק משימה</button></div>`).join("")}</div></article>`}).join('');
+ tasksBoard.innerHTML = Object.entries(groups).map(([clientName,items])=>{ const openCount=items.filter((t)=>!["בוצעה","הושלמה"].includes(t.status)).length; const highCount=items.filter((t)=>t.priority==="גבוהה").length; const lastDate=items.map((t)=>t.meetingDate||"").sort().reverse()[0]||"לא זוהה"; return `<details class="client-group" open><summary><h3>${clientName}</h3><p class="muted">פתוחות: ${openCount} | עדיפות גבוהה: ${highCount} | פגישה אחרונה: ${lastDate}</p></summary><div class="task-cards">${items.map((t)=>`<div class="task-card" data-id="${t.id}"><div><strong>${t.title}</strong><p>${t.description||""}</p><p class="muted">יעד: ${t.dueDate||"לא זוהה"} | מקור: ${t.sourceType||""} ${t.source||""}</p><p class="muted">הערות: ${t.notes||"-"}</p></div><select class="board-owner"><option ${t.owner==="אני"?"selected":""}>אני</option><option ${t.owner==="לקוח"?"selected":""}>לקוח</option><option ${t.owner==="תמיכה"?"selected":""}>תמיכה</option><option ${t.owner==="פיתוח"?"selected":""}>פיתוח</option></select><select class="board-priority"><option ${t.priority==="גבוהה"?"selected":""}>גבוהה</option><option ${t.priority==="בינונית"?"selected":""}>בינונית</option><option ${t.priority==="נמוכה"?"selected":""}>נמוכה</option></select><select class="board-status"><option ${t.status==="פתוחה"?"selected":""}>פתוחה</option><option ${t.status==="בתהליך"?"selected":""}>בתהליך</option><option ${t.status==="ממתינה"?"selected":""}>ממתינה</option><option ${t.status==="הושלמה"?"selected":""}>הושלמה</option><option ${t.status==="בטיפול"?"selected":""}>בטיפול</option><option ${t.status==="ממתין ללקוח"?"selected":""}>ממתין ללקוח</option><option ${t.status==="ממתין לפיתוח"?"selected":""}>ממתין לפיתוח</option><option ${t.status==="בוצעה"?"selected":""}>בוצעה</option></select><button class="ghost edit-task">ערוך</button><button class="ghost open-task-meeting" ${t.meetingId?"":"disabled"}>פתח פגישה</button><button class="danger delete-task">מחק משימה</button></div>`).join("")}</div></details>`}).join('');
 }
 function updateBoardTask(id, patch) { const tasks=getTasksStore(); const idx=tasks.findIndex((t)=>t.id===id); if (idx<0) return; tasks[idx]={...tasks[idx],...patch,updatedAt:new Date().toISOString()}; saveTasksStore(tasks); renderTasksBoard(); showToast("המשימה עודכנה"); }
 function renderHistory() { /* unchanged-ish */
@@ -418,5 +450,27 @@ addTasksBtn?.addEventListener("click", addCurrentAnalysisTasksToBoard);
 tasksTabBtn?.addEventListener("click", () => switchTab("tasks"));
 [tasksSearchFilter, tasksClientFilter, tasksOwnerFilter, tasksStatusFilter, tasksPriorityFilter, tasksDateFromFilter, tasksDateToFilter].forEach((el)=>el?.addEventListener("input", renderTasksBoard));
 tasksBoard?.addEventListener("change", (event) => { const card = event.target.closest(".task-card"); if (!card) return; const id = card.dataset.id; if (event.target.classList.contains("board-check")) return updateBoardTask(id, { status: event.target.checked ? "בוצעה" : "פתוחה" }); if (event.target.classList.contains("board-owner")) return updateBoardTask(id, { owner: event.target.value }); if (event.target.classList.contains("board-priority")) return updateBoardTask(id, { priority: event.target.value }); if (event.target.classList.contains("board-status")) return updateBoardTask(id, { status: event.target.value }); });
-tasksBoard?.addEventListener("click", (event) => { const card = event.target.closest(".task-card"); if (!card) return; const id = card.dataset.id; const task = getTasksStore().find((t)=>t.id===id); if (event.target.classList.contains("delete-task")) { saveTasksStore(getTasksStore().filter((t)=>t.id!==id)); renderTasksBoard(); showToast("המשימה נמחקה"); } if (event.target.classList.contains("open-task-meeting") && task?.meetingId) loadHistoryAnalysis(task.meetingId); });
+tasksBoard?.addEventListener("click", (event) => { const card = event.target.closest(".task-card"); if (!card) return; const id = card.dataset.id; const task = getTasksStore().find((t)=>t.id===id); if (event.target.classList.contains("delete-task")) { saveTasksStore(getTasksStore().filter((t)=>t.id!==id)); renderTasksBoard(); showToast("המשימה נמחקה"); } if (event.target.classList.contains("edit-task") && task) { const title=prompt("כותרת", task.title); if (title===null) return; const description=prompt("תיאור", task.description||""); if (description===null) return; const notes=prompt("הערות", task.notes||""); updateBoardTask(id,{title,description,notes}); } if (event.target.classList.contains("open-task-meeting") && task?.meetingId) loadHistoryAnalysis(task.meetingId); });
+newTaskBtn?.addEventListener("click", renderManualTaskForm);
+manualTaskFormWrap?.addEventListener("click", (event) => { if (event.target.id === "cancelManualTaskBtn") manualTaskFormWrap.classList.add("hidden"); });
+manualTaskFormWrap?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const fd = new FormData(event.target);
+  const task = normalizeTask({
+    clientName: fd.get("clientName"), title: fd.get("title"), description: fd.get("description"), priority: fd.get("priority"), status: fd.get("status"), owner: fd.get("owner"), dueDate: fd.get("dueDate"), notes: fd.get("notes"), sourceType: "Manual", source: "ידני"
+  });
+  saveTasksStore([task, ...getTasksStore()]);
+  manualTaskFormWrap.classList.add("hidden");
+  renderTasksBoard();
+  showToast("המשימה נשמרה");
+});
+saveWeeklySettingsBtn?.addEventListener("click", () => {
+  saveWeeklySettings({ recipientEmail: weeklyEmailRecipient.value.trim(), sendDay: weeklyEmailDay.value, sendTime: weeklyEmailTime.value, enabled: weeklyEmailEnabled.checked });
+  showToast("הגדרות דוח נשמרו");
+});
+const weekly = getWeeklySettings();
+if (weeklyEmailRecipient) weeklyEmailRecipient.value = weekly.recipientEmail;
+if (weeklyEmailDay) weeklyEmailDay.value = weekly.sendDay;
+if (weeklyEmailTime) weeklyEmailTime.value = weekly.sendTime;
+if (weeklyEmailEnabled) weeklyEmailEnabled.checked = weekly.enabled;
 renderTasksBoard();
