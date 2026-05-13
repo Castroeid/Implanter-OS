@@ -68,7 +68,10 @@ let lastPayload = null;
 let currentMeetingId = null;
 let taskState = [];
 let localStorageAvailable = true;
+const taskEditorOverlay = document.getElementById("taskEditorOverlay");
+const taskEditorPanel = document.getElementById("taskEditorPanel");
 let editingTaskId = null;
+let previousFocusedElement = null;
 
 function getMeetingSnapshot() {
   return {
@@ -260,7 +263,29 @@ function renderTasksBoard() {
  const filtered = tasks.filter((t)=> (!search || `${t.title} ${t.description} ${t.source} ${t.clientName}`.includes(search)) && (!client || (((t.clientName||"").trim() || "פגישה ללא שם")===client)) && (!owner || t.owner===owner) && (!status || t.status===status) && (!priority || t.priority===priority) && (!df || ((t.dueDate||t.meetingDate) && (t.dueDate||t.meetingDate)>=df)) && (!dt || ((t.dueDate||t.meetingDate) && (t.dueDate||t.meetingDate)<=dt)));
  if (!filtered.length) { tasksBoard.innerHTML='<p class="muted">לא נמצאו משימות תואמות.</p>'; return; }
  const groups = filtered.reduce((acc,t)=>{ const key=(t.clientName||"").trim()||"פגישה ללא שם"; (acc[key]=acc[key]||[]).push(t); return acc; },{});
- tasksBoard.innerHTML = Object.entries(groups).map(([clientName,items])=>{ const openCount=items.filter((t)=>!["בוצעה","הושלמה"].includes(t.status)).length; const highCount=items.filter((t)=>t.priority==="גבוהה").length; const lastDate=items.map((t)=>t.meetingDate||"").sort().reverse()[0]||"לא זוהה"; return `<details class="client-group" open><summary><h3>${clientName}</h3><p class="muted">פתוחות: ${openCount} | עדיפות גבוהה: ${highCount} | פגישה אחרונה: ${lastDate}</p></summary><div class="task-cards">${items.map((t)=>{ const isEditing = editingTaskId===t.id; return `<div class="task-card ${isEditing ? "editing" : ""}" data-id="${t.id}">${isEditing ? `<form class="task-inline-edit" dir="rtl"><input name="title" value="${t.title || ""}" placeholder="כותרת" required /><textarea name="description" rows="2" placeholder="תיאור">${t.description || ""}</textarea><input name="clientName" value="${t.clientName || ""}" placeholder="חברה/לקוח" class="compact-client-input" /><select name="owner"><option ${t.owner==="אני"?"selected":""}>אני</option><option ${t.owner==="לקוח"?"selected":""}>לקוח</option><option ${t.owner==="תמיכה"?"selected":""}>תמיכה</option><option ${t.owner==="פיתוח"?"selected":""}>פיתוח</option></select><select name="priority"><option ${t.priority==="גבוהה"?"selected":""}>גבוהה</option><option ${t.priority==="בינונית"?"selected":""}>בינונית</option><option ${t.priority==="נמוכה"?"selected":""}>נמוכה</option></select><select name="status"><option ${t.status==="פתוחה"?"selected":""}>פתוחה</option><option ${t.status==="בתהליך"?"selected":""}>בתהליך</option><option ${t.status==="ממתינה"?"selected":""}>ממתינה</option><option ${t.status==="הושלמה"?"selected":""}>הושלמה</option><option ${t.status==="בטיפול"?"selected":""}>בטיפול</option><option ${t.status==="ממתין ללקוח"?"selected":""}>ממתין ללקוח</option><option ${t.status==="ממתין לפיתוח"?"selected":""}>ממתין לפיתוח</option><option ${t.status==="בוצעה"?"selected":""}>בוצעה</option></select><input name="dueDate" type="date" value="${t.dueDate || ""}" /><textarea name="notes" rows="2" placeholder="הערות">${t.notes || ""}</textarea><div class="task-card-actions"><button type="submit">שמור</button><button type="button" class="ghost cancel-inline-edit">ביטול</button></div></form>` : `<div class="task-card-main"><label class="task-check"><input type="checkbox" class="board-check" ${["בוצעה","הושלמה"].includes(t.status) ? "checked" : ""} /></label><div><strong>${t.title}</strong><p>${t.description||""}</p><div class="task-badges"><span class="client-badge">${t.clientName || "פגישה ללא שם"}</span><span class="tag">${t.owner || "אני"}</span><span class="tag">${t.priority || "בינונית"}</span><span class="tag">${t.status || "פתוחה"}</span><span class="tag">${t.meetingDate || "ללא תאריך פגישה"}</span></div><p class="muted">יעד: ${t.dueDate||"לא זוהה"} | מקור: ${t.sourceType||""} ${t.source||""}</p><p class="muted">הערות: ${t.notes||"-"}</p></div></div><div class="task-card-actions"><button class="ghost edit-task">ערוך</button><button class="ghost open-task-meeting" ${t.meetingId?"":"disabled"}>פתח פגישה</button><button class="danger delete-task">מחק משימה</button></div>`}</div>`; }).join("")}</div></details>`}).join('');
+ tasksBoard.innerHTML = Object.entries(groups).map(([clientName,items])=>{ const openCount=items.filter((t)=>!["בוצעה","הושלמה"].includes(t.status)).length; const highCount=items.filter((t)=>t.priority==="גבוהה").length; const lastDate=items.map((t)=>t.meetingDate||"").sort().reverse()[0]||"לא זוהה"; return `<details class="client-group" open><summary><h3>${clientName}</h3><p class="muted">פתוחות: ${openCount} | עדיפות גבוהה: ${highCount} | פגישה אחרונה: ${lastDate}</p></summary><div class="task-cards">${items.map((t)=>`<div class="task-card" data-id="${t.id}"><div class="task-card-main"><label class="task-check"><input type="checkbox" class="board-check" ${["בוצעה","הושלמה"].includes(t.status) ? "checked" : ""} /></label><div><strong>${t.title}</strong><p>${t.description||""}</p><div class="task-badges"><span class="client-badge">${t.clientName || "פגישה ללא שם"}</span><span class="tag">${t.owner || "אני"}</span><span class="tag">${t.priority || "בינונית"}</span><span class="tag">${t.status || "פתוחה"}</span><span class="tag">${t.meetingDate || "ללא תאריך פגישה"}</span></div><p class="muted">יעד: ${t.dueDate||"לא זוהה"} | מקור: ${t.sourceType||""} ${t.source||""}</p><p class="muted">הערות: ${t.notes||"-"}</p></div></div><div class="task-card-actions"><button class="ghost edit-task">ערוך</button><button class="ghost open-task-meeting" ${t.meetingId?"":"disabled"}>פתח פגישה</button><button class="danger delete-task">מחק משימה</button></div></div>`).join("")}</div></details>`}).join('');
+}
+function renderTaskEditor(task) {
+  if (!taskEditorPanel) return;
+  taskEditorPanel.innerHTML = `<form id="taskEditorForm" class="task-editor-form" dir="rtl"><header><h3 id="taskEditorTitle">פרטי משימה</h3><p class="muted">עריכה מלאה ונוחה של המשימה</p></header><label>כותרת משימה<textarea name="title" rows="2" class="task-editor-title" required>${task.title || ""}</textarea></label><label>חברה / לקוח<input name="clientName" value="${task.clientName || ""}" /></label><label>עדיפות<select name="priority"><option ${task.priority==="גבוהה"?"selected":""}>גבוהה</option><option ${task.priority==="בינונית"?"selected":""}>בינונית</option><option ${task.priority==="נמוכה"?"selected":""}>נמוכה</option></select></label><label>סטטוס<select name="status"><option ${task.status==="פתוחה"?"selected":""}>פתוחה</option><option ${task.status==="בביצוע"?"selected":""}>בביצוע</option><option ${task.status==="בתהליך"?"selected":""}>בתהליך</option><option ${task.status==="ממתינה"?"selected":""}>ממתינה</option><option ${task.status==="הושלמה"?"selected":""}>הושלמה</option></select></label><label>צד אחראי<select name="owner"><option ${task.owner==="אני"?"selected":""}>אני</option><option ${task.owner==="לקוח"?"selected":""}>לקוח</option><option ${task.owner==="פיתוח"?"selected":""}>פיתוח</option></select></label><label>תאריך יעד<input name="dueDate" type="date" value="${task.dueDate || ""}" /></label><p class="task-editor-source muted">מקור: פגישה מ־${task.meetingDate || "לא זוהה"}</p><label>תיאור<textarea name="description" rows="3">${task.description || ""}</textarea></label><label>הערות<textarea name="notes" rows="4">${task.notes || ""}</textarea></label><footer class="task-editor-actions"><button type="submit">שמור שינויים</button><button type="button" class="ghost close-task-editor">ביטול</button><button type="button" class="danger delete-task-editor">מחק משימה</button></footer></form>`;
+  const title = taskEditorPanel.querySelector(".task-editor-title");
+  if (title) { title.focus(); title.setSelectionRange(title.value.length, title.value.length); title.style.height = "auto"; title.style.height = `${title.scrollHeight}px`; }
+}
+function closeTaskEditor() {
+  taskEditorOverlay?.classList.add("hidden");
+  taskEditorOverlay?.classList.remove("open");
+  taskEditorOverlay?.setAttribute("aria-hidden", "true");
+  editingTaskId = null;
+  if (previousFocusedElement) previousFocusedElement.focus();
+}
+function openTaskEditor(task) {
+  if (!task || !taskEditorOverlay) return;
+  previousFocusedElement = document.activeElement;
+  editingTaskId = task.id;
+  renderTaskEditor(task);
+  taskEditorOverlay.classList.remove("hidden");
+  requestAnimationFrame(() => taskEditorOverlay.classList.add("open"));
+  taskEditorOverlay.setAttribute("aria-hidden", "false");
 }
 function updateBoardTask(id, patch) { const tasks=getTasksStore(); const idx=tasks.findIndex((t)=>t.id===id); if (idx<0) return; tasks[idx]={...tasks[idx],...patch,updatedAt:new Date().toISOString()}; saveTasksStore(tasks); renderTasksBoard(); showToast("המשימה עודכנה"); }
 function renderHistory() { /* unchanged-ish */
@@ -451,27 +476,34 @@ addTasksBtn?.addEventListener("click", addCurrentAnalysisTasksToBoard);
 tasksTabBtn?.addEventListener("click", () => switchTab("tasks"));
 [tasksSearchFilter, tasksClientFilter, tasksOwnerFilter, tasksStatusFilter, tasksPriorityFilter, tasksDateFromFilter, tasksDateToFilter].forEach((el)=>el?.addEventListener("input", renderTasksBoard));
 tasksBoard?.addEventListener("change", (event) => { const card = event.target.closest(".task-card"); if (!card) return; const id = card.dataset.id; if (event.target.classList.contains("board-check")) return updateBoardTask(id, { status: event.target.checked ? "בוצעה" : "פתוחה" }); if (event.target.classList.contains("board-owner")) return updateBoardTask(id, { owner: event.target.value }); if (event.target.classList.contains("board-priority")) return updateBoardTask(id, { priority: event.target.value }); if (event.target.classList.contains("board-status")) return updateBoardTask(id, { status: event.target.value }); });
-tasksBoard?.addEventListener("click", (event) => { const card = event.target.closest(".task-card"); if (!card) return; const id = card.dataset.id; const task = getTasksStore().find((t)=>t.id===id); if (event.target.classList.contains("delete-task")) { saveTasksStore(getTasksStore().filter((t)=>t.id!==id)); if (editingTaskId===id) editingTaskId=null; renderTasksBoard(); showToast("המשימה נמחקה"); } if (event.target.classList.contains("edit-task") && task) { editingTaskId = id; renderTasksBoard(); } if (event.target.classList.contains("cancel-inline-edit")) { editingTaskId = null; renderTasksBoard(); } if (event.target.classList.contains("open-task-meeting") && task?.meetingId) loadHistoryAnalysis(task.meetingId); });
-tasksBoard?.addEventListener("submit", (event) => {
-  const form = event.target.closest(".task-inline-edit");
-  if (!form) return;
+tasksBoard?.addEventListener("click", (event) => { const card = event.target.closest(".task-card"); if (!card) return; const id = card.dataset.id; const task = getTasksStore().find((t)=>t.id===id); if (event.target.classList.contains("delete-task")) { saveTasksStore(getTasksStore().filter((t)=>t.id!==id)); if (editingTaskId===id) editingTaskId=null; renderTasksBoard(); showToast("המשימה נמחקה"); } if (event.target.classList.contains("edit-task") && task) openTaskEditor(task); if (event.target.classList.contains("open-task-meeting") && task?.meetingId) loadHistoryAnalysis(task.meetingId); });
+taskEditorOverlay?.addEventListener("click", (event) => {
+  if (event.target === taskEditorOverlay || event.target.classList.contains("close-task-editor")) closeTaskEditor();
+  if (event.target.classList.contains("delete-task-editor") && editingTaskId) { saveTasksStore(getTasksStore().filter((t)=>t.id!==editingTaskId)); closeTaskEditor(); renderTasksBoard(); showToast("המשימה נמחקה"); }
+});
+taskEditorPanel?.addEventListener("submit", (event) => {
+  const form = event.target.closest("#taskEditorForm");
+  if (!form || !editingTaskId) return;
   event.preventDefault();
-  const card = form.closest(".task-card");
-  const id = card?.dataset?.id;
-  if (!id) return;
   const fd = new FormData(form);
-  updateBoardTask(id, {
-    title: String(fd.get("title") || "").trim() || "משימה ללא כותרת",
-    description: String(fd.get("description") || "").trim(),
-    clientName: String(fd.get("clientName") || "").trim() || "פגישה ללא שם",
-    owner: String(fd.get("owner") || "אני"),
-    priority: String(fd.get("priority") || "בינונית"),
-    status: String(fd.get("status") || "פתוחה"),
-    dueDate: String(fd.get("dueDate") || ""),
-    notes: String(fd.get("notes") || "").trim()
-  });
-  editingTaskId = null;
-  renderTasksBoard();
+  updateBoardTask(editingTaskId, { title: String(fd.get("title") || "").trim() || "משימה ללא כותרת", description: String(fd.get("description") || "").trim(), clientName: String(fd.get("clientName") || "").trim() || "פגישה ללא שם", owner: String(fd.get("owner") || "אני"), priority: String(fd.get("priority") || "בינונית"), status: String(fd.get("status") || "פתוחה"), dueDate: String(fd.get("dueDate") || ""), notes: String(fd.get("notes") || "").trim() });
+  closeTaskEditor();
+});
+document.addEventListener("keydown", (event) => {
+  if (!taskEditorOverlay || taskEditorOverlay.classList.contains("hidden")) return;
+  if (event.key === "Escape") return closeTaskEditor();
+  if (event.key !== "Tab") return;
+  const focusables = taskEditorPanel.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])');
+  if (!focusables.length) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+});
+taskEditorPanel?.addEventListener("input", (event) => {
+  if (!event.target.classList.contains("task-editor-title")) return;
+  event.target.style.height = "auto";
+  event.target.style.height = `${event.target.scrollHeight}px`;
 });
 newTaskBtn?.addEventListener("click", renderManualTaskForm);
 manualTaskFormWrap?.addEventListener("click", (event) => { if (event.target.id === "cancelManualTaskBtn") manualTaskFormWrap.classList.add("hidden"); });
