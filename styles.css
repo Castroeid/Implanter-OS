@@ -342,7 +342,7 @@ button:hover{filter:brightness(1.03)}
 .task-card select,.task-card input{min-height:36px;padding:.35rem .5rem;max-width:220px}
 .task-card .client-badge{display:inline-flex;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .task-card-main{display:grid;grid-template-columns:auto 1fr;gap:.45rem;align-items:start}
-.task-badges{display:flex;flex-wrap:wrap;gap:.35rem;margin:.3rem 0}
+.task-badges{display:flex;flex-wrap:wrap;gap:.35rem;margin:.3rem 0;align-items:center}
 .task-card-actions{display:flex;flex-wrap:wrap;gap:.35rem;justify-content:flex-end}
 .task-inline-edit{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.45rem;width:100%}
 .task-inline-edit textarea{resize:vertical;min-height:72px}
@@ -380,3 +380,11 @@ button:hover{filter:brightness(1.03)}
 .task-status.status-waiting-dev,.task-status-badge.status-waiting-dev{background:#ffe8df;color:#9d3d12}
 .task-status.status-done,.task-status-badge.status-done{background:#e8f7ef;color:#1f7a49}
 .weekly-note{margin-top:.65rem}
+
+
+.board-status{max-width:160px;min-height:30px;padding:.2rem .5rem;border-radius:999px;border:1px solid transparent;font-size:.82rem;font-weight:600}
+.board-status.status-open{background:#eef4ff;color:#1f4fa3;border-color:#cfe0ff}
+.board-status.status-progress{background:#fff3e6;color:#a35500;border-color:#ffd7ad}
+.board-status.status-waiting-client{background:#f4ecff;color:#6a38b3;border-color:#ddc8ff}
+.board-status.status-waiting-dev{background:#fff0eb;color:#b4441f;border-color:#ffcdbb}
+.board-status.status-done{background:#eaf8ee;color:#1f7a3f;border-color:#bfe7cc}
