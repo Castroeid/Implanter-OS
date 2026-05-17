@@ -7,7 +7,20 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="container">
+    <section id="authView" class="auth-screen panel">
+      <h2>התחברות למערכת</h2>
+      <form id="authForm" class="auth-form">
+        <label>אימייל<input id="authEmail" type="email" required /></label>
+        <label>סיסמה<input id="authPassword" type="password" required minlength="6" /></label>
+        <div class="action-row">
+          <button id="loginBtn" type="submit">התחברות</button>
+          <button id="signupBtn" class="ghost" type="button">הרשמה</button>
+          <button id="googleLoginBtn" class="ghost" type="button">Google</button>
+        </div>
+      </form>
+    </section>
+
+    <main id="appView" class="container hidden">
       <section class="hero-banner" aria-label="כותרת ממותגת">
         <h1 class="sr-only">Implanter OS - מערכת ניתוח פגישות הטמעה</h1>
       </section>
@@ -19,7 +32,7 @@
             <button id="historyTabBtn" class="tab-btn" type="button" role="tab" aria-selected="false">היסטוריית פגישות</button>
             <button id="tasksTabBtn" class="tab-btn" type="button" role="tab" aria-selected="false">משימות</button>
           </div>
-          <div class="top-actions">
+          <div class="top-actions"><span id="userIndicator" class="muted"></span><button id="logoutBtn" class="ghost" type="button">יציאה</button>
             <button id="topSaveMeetingBtn" class="ghost" type="button">שמור פגישה</button>
             <button id="topNewMeetingBtn" class="ghost" type="button">פגישה חדשה</button>
             <button id="topExportPdfBtn" class="ghost" type="button">ייצוא ל-PDF</button>
@@ -169,6 +182,7 @@
     </div>
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/mammoth/mammoth.browser.min.js"></script>
     <script src="./app.js"></script>
   </body>
