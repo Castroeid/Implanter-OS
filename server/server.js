@@ -34,6 +34,38 @@ app.get("/api/health", (_req, res) => {
 });
 app.post("/api/weekly-digest/settings", (req, res) => { weeklySettings = { ...weeklySettings, ...(req.body || {}) }; res.json({ ok: true, weeklySettings }); });
 app.post("/api/tasks/snapshot", (req, res) => { tasksSnapshot = Array.isArray(req.body?.tasks) ? req.body.tasks : []; res.json({ ok: true, count: tasksSnapshot.length }); });
+
+app.post("/api/send-weekly-tasks-report", async (req, res) => {
+  try {
+    const email = req.body?.email || weeklySettings.recipientEmail || process.env.EMAIL_TO_DEFAULT;
+    const tasks = Array.isArray(req.body?.tasks) ? req.body.tasks : [];
+    const settings = req.body?.settings || weeklySettings;
+
+    if (!transporter) return res.status(500).json({ ok: false, error: "Email service is not configured" });
+    if (!email) return res.status(400).json({ ok: false, error: "Recipient email is required" });
+
+    const openTasks = tasks.filter((task) => task.status !== "בוצעה");
+    const grouped = openTasks.reduce((acc, task) => {
+      const key = task.clientName || "ללא חברה";
+      (acc[key] = acc[key] || []).push(task);
+      return acc;
+    }, {});
+
+    const html = `<div dir="rtl" style="font-family:Arial;padding:20px"><h2>Implanter OS</h2><h3>דו\"ח משימות ידני</h3><p>סה\"כ משימות פתוחות: ${openTasks.length}</p>${Object.entries(grouped).map(([clientName, clientTasks]) => `<h4>${clientName}</h4><ul>${clientTasks.map((task) => `<li><b>${task.title}</b> - ${task.description || ""} | ${task.priority || "בינונית"} | ${task.status || "פתוחה"} | ${task.owner || ""} | יעד: ${task.dueDate || "-"}</li>`).join("")}</ul>`).join("")}<hr><p>נשלח ידנית מתוך Implanter OS. יום שליחה מוגדר: ${settings.sendDay || "-"}, שעה: ${settings.sendTime || "-"}.</p></div>`;
+
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "דו\"ח משימות - Implanter OS",
+      html
+    });
+
+    return res.json({ ok: true, sentTo: email, count: openTasks.length });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 app.post("/api/weekly-digest/send", async (_req, res) => {
   try { await sendWeeklyDigest(); res.json({ ok: true }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
