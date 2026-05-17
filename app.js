@@ -3,6 +3,21 @@ const HISTORY_KEY = "implanter_os_meeting_history_v1";
 const TASKS_KEY = "implanter_os_tasks";
 const WEEKLY_SETTINGS_KEY = "implanter_os_weekly_email_settings_v1";
 
+const SUPABASE_URL = window.SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "";
+const supabase = (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+let currentUser = null;
+const authView = document.getElementById("authView");
+const appView = document.getElementById("appView");
+const authForm = document.getElementById("authForm");
+const authEmail = document.getElementById("authEmail");
+const authPassword = document.getElementById("authPassword");
+const signupBtn = document.getElementById("signupBtn");
+const googleLoginBtn = document.getElementById("googleLoginBtn");
+const logoutBtn = document.getElementById("logoutBtn");
+const userIndicator = document.getElementById("userIndicator");
+
+
 const form = document.getElementById("meeting-form");
 const transcriptEl = document.getElementById("transcript");
 const analyzeBtn = document.getElementById("analyzeBtn");
@@ -183,7 +198,7 @@ function renderAnalysis(data) {
 }
 
 function getHistory() { if (!localStorageAvailable) return []; try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch { return []; } }
-function saveHistory(items) { if (!localStorageAvailable) return; localStorage.setItem(HISTORY_KEY, JSON.stringify(items)); }
+function saveHistory(items) { if (!localStorageAvailable) return; localStorage.setItem(HISTORY_KEY, JSON.stringify(items)); syncMeetingsToSupabase(items); }
 function saveOrUpdateMeeting() {
   if (!localStorageAvailable) return;
   const clientNameInput = document.getElementById("clientName")?.value?.trim() || "";
@@ -219,7 +234,7 @@ function saveOrUpdateMeeting() {
   showToast("הפגישה נשמרה בהצלחה");
 }
 function getTasksStore() { if (!localStorageAvailable) return []; try { return JSON.parse(localStorage.getItem(TASKS_KEY) || "[]"); } catch { return []; } }
-function saveTasksStore(items) { if (!localStorageAvailable) return; localStorage.setItem(TASKS_KEY, JSON.stringify(items)); fetch(`${API_BASE_URL}/api/tasks/snapshot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tasks: items }) }).catch(() => null); }
+function saveTasksStore(items) { if (!localStorageAvailable) return; localStorage.setItem(TASKS_KEY, JSON.stringify(items)); fetch(`${API_BASE_URL}/api/tasks/snapshot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tasks: items }) }).catch(() => null); syncTasksToSupabase(items); }
 function normalizeTask(task, meetingInfo = {}) {
   const now = new Date().toISOString();
   return {
@@ -249,6 +264,7 @@ function saveWeeklySettings(settings) {
   if (!localStorageAvailable) return;
   localStorage.setItem(WEEKLY_SETTINGS_KEY, JSON.stringify(settings));
   fetch(`${API_BASE_URL}/api/weekly-digest/settings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) }).catch(() => null);
+  syncWeeklySettingsToSupabase(settings);
 }
 function renderManualTaskForm() {
   manualTaskFormWrap.innerHTML = `<form id="manualTaskForm" class="manual-task-form card"><label>חברה/לקוח<input name="clientName" required /></label><label>כותרת משימה<input name="title" required /></label><label class="full-width">תיאור<textarea name="description" rows="3"></textarea></label><label>עדיפות<select name="priority"><option>נמוכה</option><option selected>בינונית</option><option>גבוהה</option></select></label><label>סטטוס<select name="status"><option>פתוחה</option><option>בתהליך</option><option>ממתין ללקוח</option><option>ממתין לפיתוח</option><option>בוצעה</option></select></label><label>אחראי<input name="owner" value="אני" /></label><label>תאריך יעד<input name="dueDate" type="date" /></label><label class="full-width">הערות<textarea name="notes" rows="2"></textarea></label><div class="action-row full-width"><button type="submit">שמור משימה</button><button type="button" id="cancelManualTaskBtn" class="ghost">בטל</button></div></form>`;
@@ -580,3 +596,74 @@ if (weeklyEmailTime) weeklyEmailTime.value = weekly.sendTime;
 if (weeklyEmailEnabled) weeklyEmailEnabled.checked = weekly.enabled;
 sendWeeklyReportNowBtn?.addEventListener("click", sendWeeklyTasksReportNow);
 renderTasksBoard();
+
+async function ensureProfile() {
+  if (!supabase || !currentUser) return;
+  await supabase.from("profiles").upsert({ id: currentUser.id, email: currentUser.email || "", role: "user" }, { onConflict: "id" });
+}
+async function syncMeetingsToSupabase(items) {
+  if (!supabase || !currentUser) return;
+  const rows = items.map((m) => ({ ...m, id: m.id, user_id: currentUser.id }));
+  await supabase.from("meetings").upsert(rows, { onConflict: "id" });
+}
+async function syncTasksToSupabase(items) {
+  if (!supabase || !currentUser) return;
+  const rows = items.map((t) => ({ ...t, id: t.id, user_id: currentUser.id }));
+  await supabase.from("tasks").upsert(rows, { onConflict: "id" });
+}
+async function syncWeeklySettingsToSupabase(settings) {
+  if (!supabase || !currentUser) return;
+  await supabase.from("weekly_report_settings").upsert({ user_id: currentUser.id, ...settings }, { onConflict: "user_id" });
+}
+async function pullSupabaseData() {
+  if (!supabase || !currentUser) return;
+  const [{ data: meetings }, { data: tasks }, { data: weekly }] = await Promise.all([
+    supabase.from("meetings").select("*").eq("user_id", currentUser.id).order("updatedAt", { ascending: false }),
+    supabase.from("tasks").select("*").eq("user_id", currentUser.id).order("updatedAt", { ascending: false }),
+    supabase.from("weekly_report_settings").select("*").eq("user_id", currentUser.id).maybeSingle()
+  ]);
+  if (meetings) localStorage.setItem(HISTORY_KEY, JSON.stringify(meetings));
+  if (tasks) localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+  if (weekly) localStorage.setItem(WEEKLY_SETTINGS_KEY, JSON.stringify(weekly));
+}
+function setAuthUI(isAuthed) {
+  authView?.classList.toggle("hidden", isAuthed);
+  appView?.classList.toggle("hidden", !isAuthed);
+  userIndicator.textContent = isAuthed && currentUser ? `מחובר כ: ${currentUser.email}` : "";
+}
+async function initAuth() {
+  if (!supabase) { setAuthUI(true); return; }
+  const { data } = await supabase.auth.getSession();
+  currentUser = data.session?.user || null;
+  if (currentUser) { await ensureProfile(); await pullSupabaseData(); }
+  setAuthUI(Boolean(currentUser));
+  renderHistory(); renderTasksBoard();
+  supabase.auth.onAuthStateChange(async (_e, session) => {
+    currentUser = session?.user || null;
+    if (currentUser) { await ensureProfile(); await pullSupabaseData(); }
+    setAuthUI(Boolean(currentUser));
+    renderHistory(); renderTasksBoard();
+  });
+}
+authForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!supabase) return showToast("Supabase לא מוגדר");
+  const { error } = await supabase.auth.signInWithPassword({ email: authEmail.value.trim(), password: authPassword.value });
+  if (error) return alert(error.message);
+});
+signupBtn?.addEventListener("click", async () => {
+  if (!supabase) return showToast("Supabase לא מוגדר");
+  const { error } = await supabase.auth.signUp({ email: authEmail.value.trim(), password: authPassword.value });
+  if (error) return alert(error.message);
+  showToast("נשלח מייל אימות להרשמה");
+});
+googleLoginBtn?.addEventListener("click", async () => {
+  if (!supabase) return showToast("Supabase לא מוגדר");
+  await supabase.auth.signInWithOAuth({ provider: "google" });
+});
+logoutBtn?.addEventListener("click", async () => {
+  if (!supabase) return;
+  await supabase.auth.signOut();
+});
+
+initAuth();

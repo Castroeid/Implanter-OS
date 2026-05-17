@@ -388,3 +388,7 @@ button:hover{filter:brightness(1.03)}
 .board-status.status-waiting-client{background:#f4ecff;color:#6a38b3;border-color:#ddc8ff}
 .board-status.status-waiting-dev{background:#fff0eb;color:#b4441f;border-color:#ffcdbb}
 .board-status.status-done{background:#eaf8ee;color:#1f7a3f;border-color:#bfe7cc}
+
+.auth-screen { max-width: 680px; margin: 2rem auto; }
+.auth-form { display:grid; gap: 0.8rem; margin-top: 0.8rem; }
+#userIndicator { align-self: center; font-weight: 700; }
