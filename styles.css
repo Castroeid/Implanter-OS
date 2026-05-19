@@ -392,3 +392,33 @@ button:hover{filter:brightness(1.03)}
 .auth-screen { max-width: 680px; margin: 2rem auto; }
 .auth-form { display:grid; gap: 0.8rem; margin-top: 0.8rem; }
 #userIndicator { align-self: center; font-weight: 700; }
+
+
+.auth-helper {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.auth-message {
+  margin-top: 0.75rem;
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+  font-weight: 700;
+  display: none;
+}
+
+.auth-message.show {
+  display: block;
+}
+
+.auth-message.error {
+  background: #ffe8e8;
+  color: #8a1d1d;
+  border: 1px solid #f4b7b7;
+}
+
+.auth-message.success {
+  background: #e8f7ee;
+  color: #1d6a3a;
+  border: 1px solid #b9e6c9;
+}
