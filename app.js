@@ -3,10 +3,24 @@ const HISTORY_KEY = "implanter_os_meeting_history_v1";
 const TASKS_KEY = "implanter_os_tasks";
 const WEEKLY_SETTINGS_KEY = "implanter_os_weekly_email_settings_v1";
 
-const SUPABASE_URL = window.SUPABASE_URL || "YOUR_SUPABASE_URL";
-const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "YOUR_SUPABASE_ANON_KEY";
-const isSupabaseConfigured = SUPABASE_URL !== "YOUR_SUPABASE_URL" && SUPABASE_ANON_KEY !== "YOUR_SUPABASE_ANON_KEY";
-const supabase = (window.supabase && isSupabaseConfigured) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+// Paste your real Supabase project URL here.
+const SUPABASE_URL = window.SUPABASE_URL || "PASTE_REAL_SUPABASE_PROJECT_URL_HERE";
+// Paste your real Supabase anon key here.
+const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "PASTE_REAL_SUPABASE_ANON_KEY_HERE";
+const isPlaceholderSupabaseValue = (value = "") => {
+  const normalized = String(value || "").trim();
+  return !normalized
+    || normalized === "YOUR_SUPABASE_URL"
+    || normalized === "YOUR_SUPABASE_ANON_KEY"
+    || normalized === "PASTE_REAL_SUPABASE_PROJECT_URL_HERE"
+    || normalized === "PASTE_REAL_SUPABASE_ANON_KEY_HERE"
+    || normalized.startsWith("sb_secret_");
+};
+const isSupabaseConfigured = !isPlaceholderSupabaseValue(SUPABASE_URL) && !isPlaceholderSupabaseValue(SUPABASE_ANON_KEY);
+const supabaseClient = (window.supabase && isSupabaseConfigured)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+const SUPABASE_CONFIG_ERROR_MESSAGE = "התחברות לא זמינה כרגע: חסרים פרטי Supabase.";
 let currentUser = null;
 const authView = document.getElementById("authView");
 const appView = document.getElementById("appView");
@@ -599,29 +613,29 @@ sendWeeklyReportNowBtn?.addEventListener("click", sendWeeklyTasksReportNow);
 renderTasksBoard();
 
 async function ensureProfile() {
-  if (!supabase || !currentUser) return;
-  await supabase.from("profiles").upsert({ id: currentUser.id, email: currentUser.email || "", role: "user" }, { onConflict: "id" });
+  if (!supabaseClient || !currentUser) return;
+  await supabaseClient.from("profiles").upsert({ id: currentUser.id, email: currentUser.email || "", role: "user" }, { onConflict: "id" });
 }
 async function syncMeetingsToSupabase(items) {
-  if (!supabase || !currentUser) return;
+  if (!supabaseClient || !currentUser) return;
   const rows = items.map((m) => ({ ...m, id: m.id, user_id: currentUser.id }));
-  await supabase.from("meetings").upsert(rows, { onConflict: "id" });
+  await supabaseClient.from("meetings").upsert(rows, { onConflict: "id" });
 }
 async function syncTasksToSupabase(items) {
-  if (!supabase || !currentUser) return;
+  if (!supabaseClient || !currentUser) return;
   const rows = items.map((t) => ({ ...t, id: t.id, user_id: currentUser.id }));
-  await supabase.from("tasks").upsert(rows, { onConflict: "id" });
+  await supabaseClient.from("tasks").upsert(rows, { onConflict: "id" });
 }
 async function syncWeeklySettingsToSupabase(settings) {
-  if (!supabase || !currentUser) return;
-  await supabase.from("weekly_report_settings").upsert({ user_id: currentUser.id, ...settings }, { onConflict: "user_id" });
+  if (!supabaseClient || !currentUser) return;
+  await supabaseClient.from("weekly_report_settings").upsert({ user_id: currentUser.id, ...settings }, { onConflict: "user_id" });
 }
 async function pullSupabaseData() {
-  if (!supabase || !currentUser) return;
+  if (!supabaseClient || !currentUser) return;
   const [{ data: meetings }, { data: tasks }, { data: weekly }] = await Promise.all([
-    supabase.from("meetings").select("*").eq("user_id", currentUser.id).order("updatedAt", { ascending: false }),
-    supabase.from("tasks").select("*").eq("user_id", currentUser.id).order("updatedAt", { ascending: false }),
-    supabase.from("weekly_report_settings").select("*").eq("user_id", currentUser.id).maybeSingle()
+    supabaseClient.from("meetings").select("*").eq("user_id", currentUser.id).order("updatedAt", { ascending: false }),
+    supabaseClient.from("tasks").select("*").eq("user_id", currentUser.id).order("updatedAt", { ascending: false }),
+    supabaseClient.from("weekly_report_settings").select("*").eq("user_id", currentUser.id).maybeSingle()
   ]);
   if (meetings) localStorage.setItem(HISTORY_KEY, JSON.stringify(meetings));
   if (tasks) localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
@@ -664,17 +678,17 @@ function setAuthUI(isAuthed) {
 }
 async function initAuth() {
   console.log("Auth initialized");
-  if (!supabase) {
+  if (!supabaseClient) {
     setAuthUI(false);
-    showAuthError("יש להגדיר SUPABASE_URL ו-SUPABASE_ANON_KEY לפני התחברות");
+    showAuthError(SUPABASE_CONFIG_ERROR_MESSAGE);
     return;
   }
-  const { data } = await supabase.auth.getSession();
+  const { data } = await supabaseClient.auth.getSession();
   currentUser = data.session?.user || null;
   if (currentUser) { await ensureProfile(); await pullSupabaseData(); }
   setAuthUI(Boolean(currentUser));
   renderHistory(); renderTasksBoard();
-  supabase.auth.onAuthStateChange(async (_e, session) => {
+  supabaseClient.auth.onAuthStateChange(async (_e, session) => {
     currentUser = session?.user || null;
     if (currentUser) {
       await ensureProfile();
@@ -693,8 +707,11 @@ authForm?.addEventListener("submit", async (event) => {
   const password = authPassword.value;
   if (!email) return showAuthError("יש להזין כתובת אימייל.");
   if (!password) return showAuthError("יש להזין סיסמה.");
-  if (!supabase) return showAuthError("Supabase לא מוגדר");
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (!supabaseClient) {
+    showAuthError(SUPABASE_CONFIG_ERROR_MESSAGE);
+    return;
+  }
+  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
   if (error) {
     console.log(`Login error: ${error.message}`);
     return showAuthError(mapLoginErrorToHebrew(error.message));
@@ -711,8 +728,11 @@ signupBtn?.addEventListener("click", async () => {
   if (!email) return showAuthError("יש להזין כתובת אימייל.");
   if (!password) return showAuthError("יש להזין סיסמה.");
   if (password.length < 6) return showAuthError("הסיסמה קצרה מדי. יש להזין לפחות 6 תווים.");
-  if (!supabase) return showAuthError("Supabase לא מוגדר");
-  const { data, error } = await supabase.auth.signUp({ email, password });
+  if (!supabaseClient) {
+    showAuthError(SUPABASE_CONFIG_ERROR_MESSAGE);
+    return;
+  }
+  const { data, error } = await supabaseClient.auth.signUp({ email, password });
   if (error) {
     console.log(`Register error: ${error.message}`);
     return showAuthError(mapRegisterErrorToHebrew(error.message));
@@ -726,8 +746,8 @@ signupBtn?.addEventListener("click", async () => {
   showAuthSuccess("ההרשמה הצליחה. נשלח אליך מייל לאימות החשבון. יש לאשר את ההרשמה לפני התחברות.");
 });
 logoutBtn?.addEventListener("click", async () => {
-  if (!supabase) return;
-  await supabase.auth.signOut();
+  if (!supabaseClient) return;
+  await supabaseClient.auth.signOut();
   showAuthSuccess("התנתקת בהצלחה.");
 });
 
