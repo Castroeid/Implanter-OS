@@ -400,25 +400,23 @@ button:hover{filter:brightness(1.03)}
 }
 
 .auth-message {
-  margin-top: 0.75rem;
+  margin-top: 12px;
+  padding: 10px 12px;
   border-radius: 10px;
-  padding: 0.7rem 0.8rem;
   font-weight: 700;
   display: none;
 }
 
-.auth-message.show {
-  display: block;
-}
-
 .auth-message.error {
-  background: #ffe8e8;
-  color: #8a1d1d;
-  border: 1px solid #f4b7b7;
+  display: block;
+  color: #991b1b;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
 }
 
 .auth-message.success {
-  background: #e8f7ee;
-  color: #1d6a3a;
-  border: 1px solid #b9e6c9;
+  display: block;
+  color: #065f46;
+  background: #d1fae5;
+  border: 1px solid #a7f3d0;
 }
