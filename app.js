@@ -14,9 +14,9 @@ const authForm = document.getElementById("authForm");
 const authEmail = document.getElementById("authEmail");
 const authPassword = document.getElementById("authPassword");
 const signupBtn = document.getElementById("signupBtn");
-const googleLoginBtn = document.getElementById("googleLoginBtn");
 const logoutBtn = document.getElementById("logoutBtn");
 const userIndicator = document.getElementById("userIndicator");
+const authMessage = document.getElementById("authMessage");
 
 
 const form = document.getElementById("meeting-form");
@@ -627,15 +627,41 @@ async function pullSupabaseData() {
   if (tasks) localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
   if (weekly) localStorage.setItem(WEEKLY_SETTINGS_KEY, JSON.stringify(weekly));
 }
+function setAuthMessage(message = "", type = "error") {
+  if (!authMessage) return;
+  authMessage.textContent = message;
+  authMessage.classList.remove("show", "error", "success");
+  if (!message) return;
+  authMessage.classList.add("show", type);
+}
+function mapAuthErrorToHebrew(errorMessage = "") {
+  const message = (errorMessage || "").toLowerCase();
+  if (message.includes("invalid login credentials")) return "האימייל או הסיסמה אינם נכונים.";
+  if (message.includes("email not confirmed")) return "יש לאשר את כתובת האימייל לפני התחברות.";
+  if (message.includes("password") && (message.includes("short") || message.includes("least 6"))) return "הסיסמה קצרה מדי. יש להזין לפחות 6 תווים.";
+  if (message.includes("already registered") || message.includes("already been registered") || message.includes("user already registered")) return "המשתמש כבר קיים. נסה להתחבר במקום להירשם.";
+  if (message.includes("email") && message.includes("required")) return "יש להזין כתובת אימייל.";
+  if (message.includes("password") && message.includes("required")) return "יש להזין סיסמה.";
+  return `שגיאת התחברות: ${errorMessage}`;
+}
+function validateAuthInputs() {
+  const email = authEmail.value.trim();
+  const password = authPassword.value;
+  if (!email) return "יש להזין כתובת אימייל.";
+  if (!password) return "יש להזין סיסמה.";
+  if (password.length < 6) return "הסיסמה קצרה מדי. יש להזין לפחות 6 תווים.";
+  return "";
+}
 function setAuthUI(isAuthed) {
   authView?.classList.toggle("hidden", isAuthed);
   appView?.classList.toggle("hidden", !isAuthed);
   userIndicator.textContent = isAuthed && currentUser ? `מחובר כ: ${currentUser.email || ""}` : "";
 }
 async function initAuth() {
+  console.log("Auth initialized");
   if (!supabase) {
     setAuthUI(false);
-    showToast("יש להגדיר SUPABASE_URL ו-SUPABASE_ANON_KEY לפני התחברות");
+    setAuthMessage("יש להגדיר SUPABASE_URL ו-SUPABASE_ANON_KEY לפני התחברות", "error");
     return;
   }
   const { data } = await supabase.auth.getSession();
@@ -645,36 +671,50 @@ async function initAuth() {
   renderHistory(); renderTasksBoard();
   supabase.auth.onAuthStateChange(async (_e, session) => {
     currentUser = session?.user || null;
-    if (currentUser) { await ensureProfile(); await pullSupabaseData(); }
+    if (currentUser) {
+      await ensureProfile();
+      await pullSupabaseData();
+      console.log("Auth success");
+    }
     setAuthUI(Boolean(currentUser));
     renderHistory(); renderTasksBoard();
   });
 }
 authForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!supabase) return showToast("Supabase לא מוגדר");
+  console.log("Login submitted");
+  const validationError = validateAuthInputs();
+  if (validationError) return setAuthMessage(validationError, "error");
+  if (!supabase) return setAuthMessage("Supabase לא מוגדר", "error");
   const { error } = await supabase.auth.signInWithPassword({ email: authEmail.value.trim(), password: authPassword.value });
-  if (error) return alert(error.message);
+  if (error) {
+    console.log(`Auth error: ${error.message}`);
+    return setAuthMessage(mapAuthErrorToHebrew(error.message), "error");
+  }
+  console.log("Auth success");
+  setAuthMessage("התחברת בהצלחה.", "success");
 });
 signupBtn?.addEventListener("click", async () => {
-  if (!supabase) return showToast("Supabase לא מוגדר");
-  const { error } = await supabase.auth.signUp({ email: authEmail.value.trim(), password: authPassword.value });
-  if (error) return alert(error.message);
-  showToast("נשלח מייל אימות להרשמה");
-});
-googleLoginBtn?.addEventListener("click", async () => {
-  if (!supabase) return showToast("Supabase לא מוגדר");
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: "https://castroeid.github.io/Implanter-OS/"
-    }
-  });
-  if (error) alert(error.message);
+  console.log("Register submitted");
+  const validationError = validateAuthInputs();
+  if (validationError) return setAuthMessage(validationError, "error");
+  if (!supabase) return setAuthMessage("Supabase לא מוגדר", "error");
+  const { data, error } = await supabase.auth.signUp({ email: authEmail.value.trim(), password: authPassword.value });
+  if (error) {
+    console.log(`Auth error: ${error.message}`);
+    return setAuthMessage(mapAuthErrorToHebrew(error.message), "error");
+  }
+  console.log("Auth success");
+  if (data.session?.user) {
+    setAuthMessage("נרשמת והתחברת בהצלחה.", "success");
+    return;
+  }
+  setAuthMessage("נשלח אליך מייל לאימות החשבון. יש לאשר את ההרשמה לפני התחברות.", "success");
 });
 logoutBtn?.addEventListener("click", async () => {
   if (!supabase) return;
   await supabase.auth.signOut();
+  setAuthMessage("התנתקת בהצלחה.", "success");
 });
 
 initAuth();

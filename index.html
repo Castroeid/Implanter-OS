@@ -11,12 +11,13 @@
       <h2>התחברות למערכת</h2>
       <form id="authForm" class="auth-form">
         <label>אימייל<input id="authEmail" type="email" required /></label>
-        <label>סיסמה<input id="authPassword" type="password" required minlength="6" /></label>
+        <label>סיסמה<input id="authPassword" type="password" required minlength="6" /><small id="passwordHelper" class="muted auth-helper">הסיסמה צריכה להכיל לפחות 6 תווים.</small></label>
         <div class="action-row">
           <button id="loginBtn" type="submit">התחברות</button>
           <button id="signupBtn" class="ghost" type="button">הרשמה</button>
-          <button id="googleLoginBtn" class="ghost" type="button">Google</button>
+          
         </div>
+        <div id="authMessage" class="auth-message" role="status" aria-live="polite"></div>
       </form>
     </section>
 
@@ -32,7 +33,7 @@
             <button id="historyTabBtn" class="tab-btn" type="button" role="tab" aria-selected="false">היסטוריית פגישות</button>
             <button id="tasksTabBtn" class="tab-btn" type="button" role="tab" aria-selected="false">משימות</button>
           </div>
-          <div class="top-actions"><span id="userIndicator" class="muted"></span><button id="logoutBtn" class="ghost" type="button">יציאה</button>
+          <div class="top-actions"><span id="userIndicator" class="muted"></span><button id="logoutBtn" class="ghost" type="button">התנתקות</button>
             <button id="topSaveMeetingBtn" class="ghost" type="button">שמור פגישה</button>
             <button id="topNewMeetingBtn" class="ghost" type="button">פגישה חדשה</button>
             <button id="topExportPdfBtn" class="ghost" type="button">ייצוא ל-PDF</button>
