@@ -3,9 +3,10 @@ const HISTORY_KEY = "implanter_os_meeting_history_v1";
 const TASKS_KEY = "implanter_os_tasks";
 const WEEKLY_SETTINGS_KEY = "implanter_os_weekly_email_settings_v1";
 
-const SUPABASE_URL = window.SUPABASE_URL || "";
-const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "";
-const supabase = (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const SUPABASE_URL = window.SUPABASE_URL || "YOUR_SUPABASE_URL";
+const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "YOUR_SUPABASE_ANON_KEY";
+const isSupabaseConfigured = SUPABASE_URL !== "YOUR_SUPABASE_URL" && SUPABASE_ANON_KEY !== "YOUR_SUPABASE_ANON_KEY";
+const supabase = (window.supabase && isSupabaseConfigured) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 let currentUser = null;
 const authView = document.getElementById("authView");
 const appView = document.getElementById("appView");
@@ -629,10 +630,14 @@ async function pullSupabaseData() {
 function setAuthUI(isAuthed) {
   authView?.classList.toggle("hidden", isAuthed);
   appView?.classList.toggle("hidden", !isAuthed);
-  userIndicator.textContent = isAuthed && currentUser ? `מחובר כ: ${currentUser.email}` : "";
+  userIndicator.textContent = isAuthed && currentUser ? `מחובר כ: ${currentUser.email || ""}` : "";
 }
 async function initAuth() {
-  if (!supabase) { setAuthUI(true); return; }
+  if (!supabase) {
+    setAuthUI(false);
+    showToast("יש להגדיר SUPABASE_URL ו-SUPABASE_ANON_KEY לפני התחברות");
+    return;
+  }
   const { data } = await supabase.auth.getSession();
   currentUser = data.session?.user || null;
   if (currentUser) { await ensureProfile(); await pullSupabaseData(); }
@@ -659,7 +664,13 @@ signupBtn?.addEventListener("click", async () => {
 });
 googleLoginBtn?.addEventListener("click", async () => {
   if (!supabase) return showToast("Supabase לא מוגדר");
-  await supabase.auth.signInWithOAuth({ provider: "google" });
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: "https://castroeid.github.io/Implanter-OS/"
+    }
+  });
+  if (error) alert(error.message);
 });
 logoutBtn?.addEventListener("click", async () => {
   if (!supabase) return;
