@@ -4,9 +4,9 @@ const TASKS_KEY = "implanter_os_tasks";
 const WEEKLY_SETTINGS_KEY = "implanter_os_weekly_email_settings_v1";
 
 // Paste your real Supabase project URL here.
-const SUPABASE_URL = window.SUPABASE_URL || "PASTE_REAL_SUPABASE_PROJECT_URL_HERE";
+const SUPABASE_URL = window.SUPABASE_URL || "https://vtrcccocwrdaetnjhgxe.supabase.co";
 // Paste your real Supabase anon key here.
-const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "PASTE_REAL_SUPABASE_ANON_KEY_HERE";
+const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "sb_publishable_u-85TdribeSeiUXazh7ThQ__1kkzVG-";
 const isPlaceholderSupabaseValue = (value = "") => {
   const normalized = String(value || "").trim();
   return !normalized
