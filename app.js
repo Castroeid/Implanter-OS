@@ -139,6 +139,38 @@ const getRiskLevel = (risks = []) => (risks.length > 2 ? "גבוה" : risks.leng
 const riskClassByLevel = { נמוך: "low", בינוני: "medium", גבוה: "high" };
 
 const TASK_STATUS_OPTIONS = ["פתוחה", "בתהליך", "ממתין ללקוח", "ממתין לפיתוח", "בוצעה"];
+const WAITING_STATUSES = new Set(["ממתין ללקוח", "ממתין לפיתוח"]);
+const HEAT_WEIGHT = { "רגילה": 1, "מתחממת": 2, "דחופה": 3, "תקועה": 4 };
+const DAY_MS = 24 * 60 * 60 * 1000;
+let activeSmartFilter = "הכל";
+
+function daysBetween(fromIso, toDate = new Date()) {
+  const from = fromIso ? new Date(fromIso) : null;
+  if (!from || Number.isNaN(from.getTime())) return 0;
+  return Math.max(0, Math.floor((toDate.getTime() - from.getTime()) / DAY_MS));
+}
+function getHeatInfo(task) {
+  if (task.status === "בוצעה") return { level: "", ageDays: 0, staleDays: 0, overdueDays: 0, reasons: [] };
+  const now = new Date();
+  const ageDays = daysBetween(task.createdAt, now);
+  const staleDays = daysBetween(task.updatedAt, now);
+  const dueDate = task.dueDate ? new Date(`${task.dueDate}T23:59:59`) : null;
+  const overdueDays = dueDate && dueDate < now ? Math.max(1, Math.floor((now - dueDate) / DAY_MS)) : 0;
+  let level = "רגילה";
+  if (overdueDays > 0 || ageDays > 14 || task.priority === "גבוהה") level = "דחופה";
+  else if (ageDays > 7) level = "מתחממת";
+  if (staleDays >= 10) level = "תקועה";
+  const reasons = [];
+  if (ageDays > 0) reasons.push(`פתוחה כבר ${ageDays} ימים`);
+  if (overdueDays > 0) reasons.push("תאריך יעד עבר");
+  if (task.priority === "גבוהה") reasons.push("עדיפות גבוהה");
+  if (staleDays >= 10) reasons.push(`לא עודכנה ${staleDays} ימים`);
+  return { level, ageDays, staleDays, overdueDays, reasons };
+}
+function isQuickWin(task) {
+  const textLen = `${task.title || ""} ${task.description || ""}`.trim().length;
+  return task.status !== "בוצעה" && task.owner === "אני" && ["נמוכה", "בינונית"].includes(task.priority) && !WAITING_STATUSES.has(task.status) && textLen > 0 && textLen <= 90;
+}
 
 function getStatusBadgeClass(status = "") {
   const map = {
@@ -257,7 +289,9 @@ function normalizeTask(task, meetingInfo = {}) {
     clientName: task.clientName || meetingInfo.clientName || "לקוח לא זוהה", meetingDate: task.meetingDate || meetingInfo.meetingDate || "", meetingId: task.meetingId || meetingInfo.meetingId || null,
     owner: task.owner || "אני", priority: task.priority || "בינונית", status: (task.status === "בביצוע" ? "בתהליך" : (TASK_STATUS_OPTIONS.includes(task.status) ? task.status : "פתוחה")), source: task.source || "ניתוח פגישה",
     sourceType: task.sourceType || (task.meetingId ? "AI" : "Manual"), dueDate: task.dueDate || "", notes: task.notes || "",
-    createdAt: task.createdAt || now, updatedAt: now
+    createdAt: task.createdAt || task.meetingDate || now,
+    updatedAt: task.updatedAt || task.createdAt || task.meetingDate || now,
+    completedAt: task.status === "בוצעה" ? (task.completedAt || now) : null
   };
 }
 function addCurrentAnalysisTasksToBoard() {
@@ -286,11 +320,12 @@ function renderManualTaskForm() {
   manualTaskFormWrap.classList.remove("hidden");
 }
 function renderTasksKpis(tasks) {
-  const open = tasks.filter((t) => t.status === "פתוחה").length;
-  const inProgress = tasks.filter((t) => t.status === "בתהליך").length;
-  const done = tasks.filter((t) => t.status === "בוצעה").length;
-  const urgent = tasks.filter((t) => t.priority === "גבוהה" && t.status !== "בוצעה").length;
-  tasksKpis.innerHTML = `<article class="summary-card"><span>פתוחות</span><strong>${open}</strong></article><article class="summary-card"><span>בתהליך</span><strong>${inProgress}</strong></article><article class="summary-card"><span>הושלמו</span><strong>${done}</strong></article><article class="summary-card"><span>דחופות</span><strong>${urgent}</strong></article>`;
+  const enriched = tasks.map((t) => ({ ...t, heat: getHeatInfo(t) }));
+  const closedWeek = tasks.filter((t) => t.completedAt && daysBetween(t.completedAt) <= 7).length;
+  const aging = enriched.filter((t) => t.status !== "בוצעה" && t.heat.ageDays > 7).length;
+  const stuck = enriched.filter((t) => t.heat.level === "תקועה").length;
+  const focus = enriched.filter((t) => t.status !== "בוצעה").sort((a, b) => (HEAT_WEIGHT[b.heat.level || "רגילה"] - HEAT_WEIGHT[a.heat.level || "רגילה"])).slice(0, 3).length;
+  tasksKpis.innerHTML = `<article class="summary-card"><span>נסגרו השבוע</span><strong>${closedWeek}</strong></article><article class="summary-card"><span>פתוחות מעל 7 ימים</span><strong>${aging}</strong></article><article class="summary-card"><span>תקועות</span><strong>${stuck}</strong></article><article class="summary-card"><span>פוקוס היום</span><strong>${focus}</strong></article>`;
 }
 function refreshTasksCompanyFilterOptions() {
   if (!tasksClientFilter) return;
@@ -309,13 +344,18 @@ function refreshTasksCompanyFilterOptions() {
 
 function renderTasksBoard() {
  refreshTasksCompanyFilterOptions();
- const tasks = getTasksStore(); const search=(tasksSearchFilter?.value||"").trim(); const client=(tasksClientFilter?.value||"").trim();
+ const tasks = getTasksStore().map((t)=> ({ ...t, heat: getHeatInfo(t), quickWin: isQuickWin(t) }));
+ const search=(tasksSearchFilter?.value||"").trim(); const client=(tasksClientFilter?.value||"").trim();
  const owner=tasksOwnerFilter?.value||""; const status=tasksStatusFilter?.value||""; const priority=tasksPriorityFilter?.value||""; const df=tasksDateFromFilter?.value||""; const dt=tasksDateToFilter?.value||"";
  renderTasksKpis(tasks);
- const filtered = tasks.filter((t)=> (!search || `${t.title} ${t.description} ${t.source} ${t.clientName}`.includes(search)) && (!client || (((t.clientName||"").trim() || "פגישה ללא שם")===client)) && (!owner || t.owner===owner) && (!status || t.status===status) && (!priority || t.priority===priority) && (!df || ((t.dueDate||t.meetingDate) && (t.dueDate||t.meetingDate)>=df)) && (!dt || ((t.dueDate||t.meetingDate) && (t.dueDate||t.meetingDate)<=dt)));
+ const base = tasks.filter((t)=> (!search || `${t.title} ${t.description} ${t.source} ${t.clientName}`.includes(search)) && (!client || (((t.clientName||"").trim() || "פגישה ללא שם")===client)) && (!owner || t.owner===owner) && (!status || t.status===status) && (!priority || t.priority===priority) && (!df || ((t.dueDate||t.meetingDate) && (t.dueDate||t.meetingDate)>=df)) && (!dt || ((t.dueDate||t.meetingDate) && (t.dueDate||t.meetingDate)<=dt)));
+ const filtered = base.filter((t)=> activeSmartFilter === "הכל" ? t.status !== "בוצעה" : activeSmartFilter === "הפוקוס שלי" ? t.status !== "בוצעה" && t.owner === "אני" : activeSmartFilter === "דחופות" ? t.heat.level === "דחופה" : activeSmartFilter === "תקועות" ? t.heat.level === "תקועה" : activeSmartFilter === "ממתינות" ? WAITING_STATUSES.has(t.status) : activeSmartFilter === "מהירות" ? t.quickWin : activeSmartFilter === "בוצעו" ? t.status === "בוצעה" : true);
+ filtered.sort((a,b)=>{ const ad=a.status==="בוצעה", bd=b.status==="בוצעה"; if(ad!==bd) return ad-bd; const heat=HEAT_WEIGHT[b.heat.level||"רגילה"]-HEAT_WEIGHT[a.heat.level||"רגילה"]; if (heat) return heat; const adue=a.dueDate?new Date(a.dueDate).getTime():Number.MAX_SAFE_INTEGER; const bdue=b.dueDate?new Date(b.dueDate).getTime():Number.MAX_SAFE_INTEGER; if(adue!==bdue) return adue-bdue; if(a.priority!==b.priority) return (a.priority==="גבוהה"?-1:0)-(b.priority==="גבוהה"?-1:0); return new Date(b.updatedAt||0)-new Date(a.updatedAt||0); });
  if (!filtered.length) { tasksBoard.innerHTML='<p class="muted">לא נמצאו משימות תואמות.</p>'; return; }
+ const focusTasks = filtered.filter((t)=>t.status!=="בוצעה").sort((a,b)=>(HEAT_WEIGHT[b.heat.level||"רגילה"]-HEAT_WEIGHT[a.heat.level||"רגילה"]) || (a.owner==="אני"?-1:1)).slice(0,3);
+ const quickWins = filtered.filter((t)=>t.quickWin).slice(0,3);
  const groups = filtered.reduce((acc,t)=>{ const key=(t.clientName||"").trim()||"פגישה ללא שם"; (acc[key]=acc[key]||[]).push(t); return acc; },{});
- tasksBoard.innerHTML = Object.entries(groups).map(([clientName,items])=>{ const openCount=items.filter((t)=>!["בוצעה","הושלמה"].includes(t.status)).length; const highCount=items.filter((t)=>t.priority==="גבוהה").length; const lastDate=items.map((t)=>t.meetingDate||"").sort().reverse()[0]||"לא זוהה"; return `<details class="client-group" open><summary><h3>${clientName}</h3><p class="muted">פתוחות: ${openCount} | עדיפות גבוהה: ${highCount} | פגישה אחרונה: ${lastDate}</p></summary><div class="task-cards">${items.map((t)=>`<div class="task-card" data-id="${t.id}"><div class="task-card-main"><label class="task-check"><input type="checkbox" class="board-check" ${["בוצעה","הושלמה"].includes(t.status) ? "checked" : ""} /></label><div><strong>${t.title}</strong><p>${t.description||""}</p><div class="task-badges"><span class="client-badge">${t.clientName || "פגישה ללא שם"}</span><span class="tag">${t.owner || "אני"}</span><span class="tag">${t.priority || "בינונית"}</span>${buildStatusSelect(t)}<span class="tag">${t.meetingDate || "ללא תאריך פגישה"}</span></div><p class="muted">יעד: ${t.dueDate||"לא זוהה"} | מקור: ${t.sourceType||""} ${t.source||""}</p><p class="muted">הערות: ${t.notes||"-"}</p></div></div><div class="task-card-actions"><button class="ghost edit-task">ערוך</button><button class="ghost open-task-meeting" ${t.meetingId?"":"disabled"}>פתח פגישה</button><button class="danger delete-task">מחק משימה</button></div></div>`).join("")}</div></details>`}).join('');
+ tasksBoard.innerHTML = `<section class="card"><h3>הפוקוס להיום</h3>${focusTasks.map((t)=>`<div class="focus-item"><strong>${t.title}</strong><p class="muted">${t.clientName} | ${t.priority} | ${t.status}</p><p class="muted">${(t.heat.reasons||[]).slice(0,2).join(" · ")}</p><div class="task-card-actions"><button class="ghost edit-task" data-id="${t.id}">פתח משימה</button><button class="ghost mark-done" data-id="${t.id}">סמן כבוצעה</button><button class="ghost postpone" data-id="${t.id}">דחה למחר</button></div></div>`).join("")}</section><section class="card"><h3>משימות מהירות לסגירה</h3>${quickWins.map((t)=>`<p>• ${t.title}</p>`).join("") || '<p class="muted">אין משימות מהירות כרגע.</p>'}</section>` + Object.entries(groups).map(([clientName,items])=>{ const openCount=items.filter((t)=>t.status!=="בוצעה").length; const highCount=items.filter((t)=>t.priority==="גבוהה").length; const lastDate=items.map((t)=>t.meetingDate||"").sort().reverse()[0]||"לא זוהה"; return `<details class="client-group" open><summary><h3>${clientName}</h3><p class="muted">פתוחות: ${openCount} | עדיפות גבוהה: ${highCount} | פגישה אחרונה: ${lastDate}</p></summary><div class="task-cards">${items.map((t)=>`<div class="task-card ${t.heat.level === "דחופה" || t.heat.level === "תקועה" ? "task-pulse" : ""}" data-id="${t.id}"><div class="task-card-main"><label class="task-check"><input type="checkbox" class="board-check" ${t.status === "בוצעה" ? "checked" : ""} /></label><div><strong>${t.title}</strong><p>${t.description||""}</p><div class="task-badges"><span class="client-badge">${t.clientName || "פגישה ללא שם"}</span><span class="tag">${t.owner || "אני"}</span><span class="tag">${t.priority || "בינונית"}</span><span class="heat-badge heat-${t.heat.level || "רגילה"}">${t.heat.level || "הושלמה"}</span>${buildStatusSelect(t)}<span class="tag">${t.meetingDate || "ללא תאריך פגישה"}</span></div><p class="muted">נוצרה: ${(t.createdAt||"").slice(0,10) || "-"} | עודכנה: ${(t.updatedAt||"").slice(0,10) || "-"} | יעד: ${t.dueDate||"לא זוהה"}</p><p class="muted">${t.heat.overdueDays ? `<span class="overdue">באיחור ${t.heat.overdueDays} ימים</span>` : ""} פתוחה ${t.heat.ageDays} ימים | לא עודכנה ${t.heat.staleDays} ימים</p></div></div><div class="task-card-actions"><button class="ghost edit-task">ערוך</button><button class="ghost open-task-meeting" ${t.meetingId?"":"disabled"}>פתח פגישה</button><button class="danger delete-task">מחק משימה</button></div></div>`).join("")}</div></details>`}).join('');
 }
 function renderTaskEditor(task) {
   if (!taskEditorPanel) return;
@@ -339,7 +379,7 @@ function openTaskEditor(task) {
   requestAnimationFrame(() => taskEditorOverlay.classList.add("open"));
   taskEditorOverlay.setAttribute("aria-hidden", "false");
 }
-function updateBoardTask(id, patch) { const tasks=getTasksStore(); const idx=tasks.findIndex((t)=>t.id===id); if (idx<0) return; const prevStatus = tasks[idx].status; tasks[idx]={...tasks[idx],...patch,updatedAt:new Date().toISOString()}; saveTasksStore(tasks); renderTasksBoard(); if (Object.prototype.hasOwnProperty.call(patch, "status") && patch.status !== prevStatus) showToast("סטטוס המשימה עודכן"); else showToast("המשימה עודכנה"); }
+function updateBoardTask(id, patch) { const tasks=getTasksStore(); const idx=tasks.findIndex((t)=>t.id===id); if (idx<0) return; const prevStatus = tasks[idx].status; const nextStatus = Object.prototype.hasOwnProperty.call(patch, "status") ? patch.status : prevStatus; const now = new Date().toISOString(); const completedAt = prevStatus !== "בוצעה" && nextStatus === "בוצעה" ? now : (prevStatus === "בוצעה" && nextStatus !== "בוצעה" ? null : tasks[idx].completedAt || null); tasks[idx]={...tasks[idx],...patch,completedAt,updatedAt:now}; saveTasksStore(tasks); renderTasksBoard(); if (Object.prototype.hasOwnProperty.call(patch, "status") && patch.status !== prevStatus) showToast("סטטוס המשימה עודכן"); else showToast("המשימה עודכנה"); }
 function renderHistory() { /* unchanged-ish */
   const clientFilter = (historyClientFilter.value || "").trim();
   const typeFilter = historyTypeFilter.value || "";
@@ -537,8 +577,23 @@ renderHistory();
 addTasksBtn?.addEventListener("click", addCurrentAnalysisTasksToBoard);
 tasksTabBtn?.addEventListener("click", () => switchTab("tasks"));
 [tasksSearchFilter, tasksClientFilter, tasksOwnerFilter, tasksStatusFilter, tasksPriorityFilter, tasksDateFromFilter, tasksDateToFilter].forEach((el)=>el?.addEventListener("input", renderTasksBoard));
+const smartFiltersEl = document.getElementById("smartFilters");
+if (smartFiltersEl) {
+  const options = ["הכל", "הפוקוס שלי", "דחופות", "תקועות", "ממתינות", "מהירות", "בוצעו"];
+  smartFiltersEl.innerHTML = options.map((label, idx) => `<button type="button" class="ghost smart-filter ${idx === 0 ? "active" : ""}" data-filter="${label}">${label}</button>`).join("");
+  smartFiltersEl.addEventListener("click", (event) => {
+    const btn = event.target.closest(".smart-filter");
+    if (!btn) return;
+    activeSmartFilter = btn.dataset.filter || "הכל";
+    smartFiltersEl.querySelectorAll(".smart-filter").forEach((item) => item.classList.toggle("active", item === btn));
+    renderTasksBoard();
+  });
+}
 tasksBoard?.addEventListener("change", (event) => { const card = event.target.closest(".task-card"); if (!card) return; const id = card.dataset.id; if (event.target.classList.contains("board-check")) { const task = getTasksStore().find((t)=>t.id===id); if (!task) return; if (event.target.checked) return updateBoardTask(id, { status: "בוצעה" }); if (task.status === "בוצעה") return updateBoardTask(id, { status: "פתוחה" }); return; } if (event.target.classList.contains("board-owner")) return updateBoardTask(id, { owner: event.target.value }); if (event.target.classList.contains("board-priority")) return updateBoardTask(id, { priority: event.target.value }); if (event.target.classList.contains("board-status")) return updateBoardTask(id, { status: event.target.value }); });
-tasksBoard?.addEventListener("click", (event) => { const card = event.target.closest(".task-card"); if (!card) return; const id = card.dataset.id; const task = getTasksStore().find((t)=>t.id===id); if (event.target.classList.contains("delete-task")) { saveTasksStore(getTasksStore().filter((t)=>t.id!==id)); if (editingTaskId===id) editingTaskId=null; renderTasksBoard(); showToast("המשימה נמחקה"); } if (event.target.classList.contains("edit-task") && task) openTaskEditor(task); if (event.target.classList.contains("open-task-meeting") && task?.meetingId) loadHistoryAnalysis(task.meetingId); });
+tasksBoard?.addEventListener("click", (event) => {
+  if (event.target.classList.contains("mark-done")) return updateBoardTask(event.target.dataset.id, { status: "בוצעה" });
+  if (event.target.classList.contains("postpone")) return updateBoardTask(event.target.dataset.id, { dueDate: new Date(Date.now() + DAY_MS).toISOString().slice(0, 10) });
+  const card = event.target.closest(".task-card"); if (!card) return; const id = card.dataset.id; const task = getTasksStore().find((t)=>t.id===id); if (event.target.classList.contains("delete-task")) { saveTasksStore(getTasksStore().filter((t)=>t.id!==id)); if (editingTaskId===id) editingTaskId=null; renderTasksBoard(); showToast("המשימה נמחקה"); } if (event.target.classList.contains("edit-task") && task) openTaskEditor(task); if (event.target.classList.contains("open-task-meeting") && task?.meetingId) loadHistoryAnalysis(task.meetingId); });
 taskEditorOverlay?.addEventListener("click", (event) => {
   if (event.target === taskEditorOverlay || event.target.classList.contains("close-task-editor")) closeTaskEditor();
   if (event.target.classList.contains("delete-task-editor") && editingTaskId) { saveTasksStore(getTasksStore().filter((t)=>t.id!==editingTaskId)); closeTaskEditor(); renderTasksBoard(); showToast("המשימה נמחקה"); }
