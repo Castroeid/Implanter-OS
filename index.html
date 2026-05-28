@@ -15,8 +15,10 @@
         <div class="action-row">
           <button id="loginBtn" type="submit">התחברות</button>
           <button id="signupBtn" class="ghost" type="button">הרשמה</button>
+          <button id="localLoginBtn" class="ghost" type="button">כניסה מקומית מהמחשב הזה</button>
           <button id="switchUserBtn" class="ghost hidden" type="button">החלף משתמש</button>
         </div>
+        <p class="muted auth-helper">מתאים לעבודה אישית. הנתונים יישמרו רק בדפדפן ובמחשב הזה.</p>
         <div id="authMessage" class="auth-message" role="alert"></div>
       </form>
     </section>
@@ -33,7 +35,7 @@
             <button id="historyTabBtn" class="tab-btn" type="button" role="tab" aria-selected="false">היסטוריית פגישות</button>
             <button id="tasksTabBtn" class="tab-btn" type="button" role="tab" aria-selected="false">משימות</button>
           </div>
-          <div class="top-actions"><span id="userIndicator" class="muted"></span><button id="logoutBtn" class="ghost" type="button">התנתקות</button>
+          <div class="top-actions"><span id="userIndicator" class="muted"></span><button id="logoutBtn" class="ghost" type="button">החלפת משתמש / יציאה</button>
             <button id="topSaveMeetingBtn" class="ghost" type="button">שמור פגישה</button>
             <button id="topNewMeetingBtn" class="ghost" type="button">פגישה חדשה</button>
             <button id="topExportPdfBtn" class="ghost" type="button">ייצוא ל-PDF</button>
@@ -163,7 +165,7 @@
       <section id="tasksView" class="panel hidden" aria-labelledby="tasks-title">
         <div class="tasks-header"><h2 id="tasks-title">משימות</h2><button id="newTaskBtn" type="button">משימה חדשה</button></div>
         <div id="tasksKpis" class="tasks-kpis"></div>
-        <div class="weekly-settings card"><h3>דוח משימות שבועי</h3><div class="settings-grid"><label>אימייל יעד<input id="weeklyEmailRecipient" type="email" /></label><label>יום שליחה<select id="weeklyEmailDay"><option value="0">יום ראשון</option><option value="1">יום שני</option><option value="2">יום שלישי</option><option value="3">יום רביעי</option><option value="4">יום חמישי</option><option value="5">יום שישי</option><option value="6">שבת</option></select></label><label>שעת שליחה<input id="weeklyEmailTime" type="time" /></label><label class="toggle-row">הפעלה<input id="weeklyEmailEnabled" type="checkbox" /></label><button id="saveWeeklySettingsBtn" class="ghost" type="button">שמור הגדרות דוח</button><button id="sendWeeklyReportNowBtn" type="button">שלח דוח עכשיו</button></div><p class="muted weekly-note">הדוח השבועי האוטומטי דורש שמירת משימות בצד שרת או שירות תזמון פעיל. כרגע ניתן לשלוח דוח ידנית מהמערכת.</p></div>
+        <div class="weekly-settings card"><h3>דוח משימות שבועי</h3><div class="settings-grid"><label>אימייל יעד<input id="weeklyEmailRecipient" type="email" /></label><label>יום שליחה<select id="weeklyEmailDay"><option value="0">יום ראשון</option><option value="1">יום שני</option><option value="2">יום שלישי</option><option value="3">יום רביעי</option><option value="4">יום חמישי</option><option value="5">יום שישי</option><option value="6">שבת</option></select></label><label>שעת שליחה<input id="weeklyEmailTime" type="time" /></label><label class="toggle-row">הפעלה<input id="weeklyEmailEnabled" type="checkbox" /></label><button id="saveWeeklySettingsBtn" class="ghost" type="button">שמור הגדרות דוח</button><button id="sendWeeklyReportNowBtn" type="button">שלח דוח עכשיו</button><button id="exportBackupBtn" class="ghost" type="button">ייצוא גיבוי</button><button id="importBackupBtn" class="ghost" type="button">ייבוא גיבוי</button><input id="backupFileInput" type="file" accept="application/json" hidden /></div><p class="muted weekly-note">הדוח השבועי האוטומטי דורש שמירת משימות בצד שרת או שירות תזמון פעיל. כרגע ניתן לשלוח דוח ידנית מהמערכת.</p></div>
         <div id="manualTaskFormWrap" class="manual-task-wrap hidden"></div>
         <div id="smartFilters" class="smart-filters"></div>
         <div class="tasks-filters">
