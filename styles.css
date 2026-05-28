@@ -416,6 +416,12 @@ button:hover{filter:brightness(1.03)}
   font-weight: 700;
   display: none;
 }
+.auth-message.info {
+  display: block;
+  color: #1e3a8a;
+  background: #dbeafe;
+  border: 1px solid #bfdbfe;
+}
 
 .auth-message.error {
   display: block;

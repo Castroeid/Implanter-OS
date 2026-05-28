@@ -28,6 +28,7 @@ const authForm = document.getElementById("authForm");
 const authEmail = document.getElementById("authEmail");
 const authPassword = document.getElementById("authPassword");
 const signupBtn = document.getElementById("signupBtn");
+const switchUserBtn = document.getElementById("switchUserBtn");
 const logoutBtn = document.getElementById("logoutBtn");
 const userIndicator = document.getElementById("userIndicator");
 const authMessage = document.getElementById("authMessage");
@@ -699,37 +700,44 @@ async function pullSupabaseData() {
 function clearAuthMessage() {
   if (!authMessage) return;
   authMessage.textContent = "";
-  authMessage.classList.remove("error", "success");
+  authMessage.classList.remove("error", "success", "info");
 }
 function showAuthError(message) {
   if (!authMessage) return;
   authMessage.textContent = message;
-  authMessage.classList.remove("success");
+  authMessage.classList.remove("success", "info");
   authMessage.classList.add("error");
 }
 function showAuthSuccess(message) {
   if (!authMessage) return;
   authMessage.textContent = message;
-  authMessage.classList.remove("error");
+  authMessage.classList.remove("error", "info");
   authMessage.classList.add("success");
+}
+function showAuthInfo(message) {
+  if (!authMessage) return;
+  authMessage.textContent = message;
+  authMessage.classList.remove("error", "success");
+  authMessage.classList.add("info");
 }
 function mapLoginErrorToHebrew(errorMessage = "") {
   const message = (errorMessage || "").toLowerCase();
   if (message.includes("invalid login credentials")) return "האימייל או הסיסמה אינם נכונים.";
   if (message.includes("email not confirmed")) return "יש לאשר את כתובת האימייל לפני התחברות.";
-  if (message.includes("user not found")) return "לא נמצא משתמש עם כתובת האימייל הזו.";
-  return `ההתחברות נכשלה: ${errorMessage}`;
+  return `שגיאה: ${errorMessage}`;
 }
 function mapRegisterErrorToHebrew(errorMessage = "") {
   const message = (errorMessage || "").toLowerCase();
   if (message.includes("user already registered") || message.includes("already been registered")) return "המשתמש כבר קיים. נסה להתחבר במקום להירשם.";
   if (message.includes("password should be at least 6 characters") || (message.includes("password") && message.includes("least 6"))) return "הסיסמה קצרה מדי. יש להזין לפחות 6 תווים.";
-  return `ההרשמה נכשלה: ${errorMessage}`;
+  if (message.includes("signup is disabled") || message.includes("signups not allowed")) return "הרשמה אינה פעילה כרגע. יש להפעיל הרשמה ב-Supabase.";
+  return `שגיאה: ${errorMessage}`;
 }
 function setAuthUI(isAuthed) {
   authView?.classList.toggle("hidden", isAuthed);
   appView?.classList.toggle("hidden", !isAuthed);
   userIndicator.textContent = isAuthed && currentUser ? `מחובר כ: ${currentUser.email || ""}` : "";
+  switchUserBtn?.classList.toggle("hidden", !isAuthed);
 }
 async function initAuth() {
   console.log("Auth initialized");
@@ -740,7 +748,11 @@ async function initAuth() {
   }
   const { data } = await supabaseClient.auth.getSession();
   currentUser = data.session?.user || null;
-  if (currentUser) { await ensureProfile(); await pullSupabaseData(); }
+  if (currentUser) {
+    console.log("Existing session found");
+    await ensureProfile();
+    await pullSupabaseData();
+  }
   setAuthUI(Boolean(currentUser));
   renderHistory(); renderTasksBoard();
   supabaseClient.auth.onAuthStateChange(async (_e, session) => {
@@ -793,17 +805,24 @@ signupBtn?.addEventListener("click", async () => {
     return showAuthError(mapRegisterErrorToHebrew(error.message));
   }
   console.log("Register success");
+  showAuthSuccess("ההרשמה הצליחה.");
   if (data.session) {
-    showAuthSuccess("ההרשמה הצליחה והתחברת למערכת.");
     setAuthUI(true);
     return;
   }
-  showAuthSuccess("ההרשמה הצליחה. נשלח אליך מייל לאימות החשבון. יש לאשר את ההרשמה לפני התחברות.");
+  showAuthInfo("נשלח אליך מייל לאימות החשבון. יש לאשר את המייל לפני התחברות.");
 });
 logoutBtn?.addEventListener("click", async () => {
   if (!supabaseClient) return;
   await supabaseClient.auth.signOut();
-  showAuthSuccess("התנתקת בהצלחה.");
+  console.log("Signed out");
+  clearAuthMessage();
+});
+switchUserBtn?.addEventListener("click", async () => {
+  if (!supabaseClient) return;
+  await supabaseClient.auth.signOut();
+  console.log("Signed out");
+  showAuthInfo("בוצעה התנתקות. ניתן להתחבר עם משתמש אחר.");
 });
 
 initAuth();
