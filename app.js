@@ -2,6 +2,8 @@ const API_BASE_URL = "https://implanter-os.onrender.com";
 const HISTORY_KEY = "implanter_os_meeting_history_v1";
 const TASKS_KEY = "implanter_os_tasks";
 const WEEKLY_SETTINGS_KEY = "implanter_os_weekly_email_settings_v1";
+const AUTH_MODE_KEY = "implanter_os_auth_mode";
+const LOCAL_WORKSPACE_KEY = "implanter_os_local_workspace_id";
 
 // Paste your real Supabase project URL here.
 const SUPABASE_URL = window.SUPABASE_URL || "https://vtrcccocwrdaetnjhgxe.supabase.co";
@@ -22,12 +24,15 @@ const supabaseClient = (window.supabase && isSupabaseConfigured)
   : null;
 const SUPABASE_CONFIG_ERROR_MESSAGE = "התחברות לא זמינה כרגע: חסרים פרטי Supabase.";
 let currentUser = null;
+let currentAuthMode = "supabase";
+let currentWorkspaceId = "";
 const authView = document.getElementById("authView");
 const appView = document.getElementById("appView");
 const authForm = document.getElementById("authForm");
 const authEmail = document.getElementById("authEmail");
 const authPassword = document.getElementById("authPassword");
 const signupBtn = document.getElementById("signupBtn");
+const localLoginBtn = document.getElementById("localLoginBtn");
 const switchUserBtn = document.getElementById("switchUserBtn");
 const logoutBtn = document.getElementById("logoutBtn");
 const userIndicator = document.getElementById("userIndicator");
@@ -81,6 +86,9 @@ const weeklyEmailTime = document.getElementById("weeklyEmailTime");
 const weeklyEmailEnabled = document.getElementById("weeklyEmailEnabled");
 const saveWeeklySettingsBtn = document.getElementById("saveWeeklySettingsBtn");
 const sendWeeklyReportNowBtn = document.getElementById("sendWeeklyReportNowBtn");
+const exportBackupBtn = document.getElementById("exportBackupBtn");
+const importBackupBtn = document.getElementById("importBackupBtn");
+const backupFileInput = document.getElementById("backupFileInput");
 const addTasksBtn = document.getElementById("addTasksBtn");
 const tasksSearchFilter = document.getElementById("tasksSearchFilter");
 const tasksClientFilter = document.getElementById("tasksClientFilter");
@@ -245,8 +253,18 @@ function renderAnalysis(data) {
   dashboard.classList.remove("hidden");
 }
 
-function getHistory() { if (!localStorageAvailable) return []; try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch { return []; } }
-function saveHistory(items) { if (!localStorageAvailable) return; localStorage.setItem(HISTORY_KEY, JSON.stringify(items)); syncMeetingsToSupabase(items); }
+function getCurrentAuthMode() {
+  if (!localStorageAvailable) return "supabase";
+  return localStorage.getItem(AUTH_MODE_KEY) || "supabase";
+}
+function getWorkspaceHistoryKey() {
+  return currentAuthMode === "local" && currentWorkspaceId ? `implanter_os_meetings_${currentWorkspaceId}` : HISTORY_KEY;
+}
+function getWorkspaceTasksKey() {
+  return currentAuthMode === "local" && currentWorkspaceId ? `implanter_os_tasks_${currentWorkspaceId}` : TASKS_KEY;
+}
+function saveHistory(items) { if (!localStorageAvailable) return; localStorage.setItem(getWorkspaceHistoryKey(), JSON.stringify(items)); syncMeetingsToSupabase(items); }
+function getHistory() { if (!localStorageAvailable) return []; try { return JSON.parse(localStorage.getItem(getWorkspaceHistoryKey()) || localStorage.getItem(HISTORY_KEY) || "[]"); } catch { return []; } }
 function saveOrUpdateMeeting() {
   if (!localStorageAvailable) return;
   const clientNameInput = document.getElementById("clientName")?.value?.trim() || "";
@@ -281,8 +299,8 @@ function saveOrUpdateMeeting() {
   renderHistory();
   showToast("הפגישה נשמרה בהצלחה");
 }
-function getTasksStore() { if (!localStorageAvailable) return []; try { return JSON.parse(localStorage.getItem(TASKS_KEY) || "[]"); } catch { return []; } }
-function saveTasksStore(items) { if (!localStorageAvailable) return; localStorage.setItem(TASKS_KEY, JSON.stringify(items)); fetch(`${API_BASE_URL}/api/tasks/snapshot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tasks: items }) }).catch(() => null); syncTasksToSupabase(items); }
+function getTasksStore() { if (!localStorageAvailable) return []; try { return JSON.parse(localStorage.getItem(getWorkspaceTasksKey()) || localStorage.getItem(TASKS_KEY) || "[]"); } catch { return []; } }
+function saveTasksStore(items) { if (!localStorageAvailable) return; localStorage.setItem(getWorkspaceTasksKey(), JSON.stringify(items)); fetch(`${API_BASE_URL}/api/tasks/snapshot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tasks: items }) }).catch(() => null); syncTasksToSupabase(items); }
 function normalizeTask(task, meetingInfo = {}) {
   const now = new Date().toISOString();
   return {
@@ -736,11 +754,38 @@ function mapRegisterErrorToHebrew(errorMessage = "") {
 function setAuthUI(isAuthed) {
   authView?.classList.toggle("hidden", isAuthed);
   appView?.classList.toggle("hidden", !isAuthed);
-  userIndicator.textContent = isAuthed && currentUser ? `מחובר כ: ${currentUser.email || ""}` : "";
+  userIndicator.textContent = isAuthed && currentAuthMode === "local"
+    ? "מצב מקומי - הנתונים נשמרים בדפדפן הזה בלבד"
+    : (isAuthed && currentUser ? `מחובר כ: ${currentUser.email || ""}` : "");
   switchUserBtn?.classList.toggle("hidden", !isAuthed);
+}
+function ensureLocalWorkspaceId() {
+  const existing = localStorage.getItem(LOCAL_WORKSPACE_KEY);
+  if (existing) return existing;
+  const generated = `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  localStorage.setItem(LOCAL_WORKSPACE_KEY, generated);
+  return generated;
+}
+function enterLocalMode() {
+  if (!localStorageAvailable) return showAuthError("localStorage לא זמין בדפדפן זה.");
+  currentAuthMode = "local";
+  currentWorkspaceId = ensureLocalWorkspaceId();
+  localStorage.setItem(AUTH_MODE_KEY, "local");
+  currentUser = null;
+  clearAuthMessage();
+  setAuthUI(true);
+  renderHistory();
+  renderTasksBoard();
 }
 async function initAuth() {
   console.log("Auth initialized");
+  currentAuthMode = getCurrentAuthMode();
+  if (currentAuthMode === "local") {
+    currentWorkspaceId = ensureLocalWorkspaceId();
+    setAuthUI(true);
+    renderHistory(); renderTasksBoard();
+    return;
+  }
   if (!supabaseClient) {
     setAuthUI(false);
     showAuthError(SUPABASE_CONFIG_ERROR_MESSAGE);
@@ -749,6 +794,8 @@ async function initAuth() {
   const { data } = await supabaseClient.auth.getSession();
   currentUser = data.session?.user || null;
   if (currentUser) {
+    currentAuthMode = "supabase";
+    if (localStorageAvailable) localStorage.setItem(AUTH_MODE_KEY, "supabase");
     console.log("Existing session found");
     await ensureProfile();
     await pullSupabaseData();
@@ -758,6 +805,8 @@ async function initAuth() {
   supabaseClient.auth.onAuthStateChange(async (_e, session) => {
     currentUser = session?.user || null;
     if (currentUser) {
+      currentAuthMode = "supabase";
+      if (localStorageAvailable) localStorage.setItem(AUTH_MODE_KEY, "supabase");
       await ensureProfile();
       await pullSupabaseData();
       console.log("Auth success");
@@ -812,17 +861,67 @@ signupBtn?.addEventListener("click", async () => {
   }
   showAuthInfo("נשלח אליך מייל לאימות החשבון. יש לאשר את המייל לפני התחברות.");
 });
+localLoginBtn?.addEventListener("click", () => {
+  enterLocalMode();
+});
 logoutBtn?.addEventListener("click", async () => {
+  if (currentAuthMode === "local") {
+    currentAuthMode = "supabase";
+    localStorage.setItem(AUTH_MODE_KEY, "supabase");
+    setAuthUI(false);
+    showAuthInfo("יצאת ממצב מקומי. הנתונים המקומיים נשמרו.");
+    return;
+  }
   if (!supabaseClient) return;
   await supabaseClient.auth.signOut();
-  console.log("Signed out");
   clearAuthMessage();
 });
 switchUserBtn?.addEventListener("click", async () => {
+  if (currentAuthMode === "local") {
+    currentAuthMode = "supabase";
+    localStorage.setItem(AUTH_MODE_KEY, "supabase");
+    setAuthUI(false);
+    showAuthInfo("בוצעה יציאה ממצב מקומי. הנתונים המקומיים לא נמחקו.");
+    return;
+  }
   if (!supabaseClient) return;
   await supabaseClient.auth.signOut();
-  console.log("Signed out");
   showAuthInfo("בוצעה התנתקות. ניתן להתחבר עם משתמש אחר.");
+});
+function exportBackup() {
+  if (!localStorageAvailable) return;
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    authMode: currentAuthMode,
+    workspaceId: currentWorkspaceId || null,
+    history: getHistory(),
+    tasks: getTasksStore(),
+    weekly: getWeeklySettings()
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `implanter-os-backup-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+async function importBackupFile(file) {
+  if (!file || !localStorageAvailable) return;
+  const raw = await file.text();
+  const data = JSON.parse(raw);
+  if (Array.isArray(data.history)) saveHistory(data.history);
+  if (Array.isArray(data.tasks)) saveTasksStore(data.tasks);
+  if (data.weekly) saveWeeklySettings(data.weekly);
+  renderHistory(); renderTasksBoard();
+  showToast("הגיבוי יובא בהצלחה");
+}
+exportBackupBtn?.addEventListener("click", exportBackup);
+importBackupBtn?.addEventListener("click", () => backupFileInput?.click());
+backupFileInput?.addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  await importBackupFile(file);
+  event.target.value = "";
 });
 
 initAuth();
