@@ -12,13 +12,16 @@
       <form id="authForm" class="auth-form">
         <label>אימייל<input id="authEmail" type="email" required /></label>
         <label>סיסמה<input id="authPassword" type="password" required minlength="6" /><small id="passwordHelper" class="muted auth-helper">הסיסמה צריכה להכיל לפחות 6 תווים.</small></label>
-        <div class="action-row">
-          <button id="loginBtn" type="submit">התחברות</button>
-          <button id="signupBtn" class="ghost" type="button">הרשמה</button>
-          <button id="localLoginBtn" class="ghost" type="button">כניסה מקומית מהמחשב הזה</button>
-          <button id="switchUserBtn" class="ghost hidden" type="button">החלף משתמש</button>
+        <button id="localLoginBtn" class="local-login-btn" type="button">כניסה מקומית מהמחשב הזה</button>
+        <p class="muted auth-helper">מתאים לעבודה אישית. הנתונים נשמרים בדפדפן הזה בלבד.</p>
+        <div class="auth-secondary-options" aria-label="אפשרויות התחברות עם חשבון">
+          <span class="muted auth-secondary-label">אפשרות משנית לחשבון Supabase</span>
+          <div class="action-row">
+            <button id="loginBtn" class="ghost" type="submit">התחברות</button>
+            <button id="signupBtn" class="ghost" type="button">הרשמה</button>
+            <button id="switchUserBtn" class="ghost hidden" type="button">החלף משתמש</button>
+          </div>
         </div>
-        <p class="muted auth-helper">מתאים לעבודה אישית. הנתונים יישמרו רק בדפדפן ובמחשב הזה.</p>
         <div id="authMessage" class="auth-message" role="alert"></div>
       </form>
     </section>

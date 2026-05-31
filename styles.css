@@ -436,3 +436,32 @@ button:hover{filter:brightness(1.03)}
   background: #d1fae5;
   border: 1px solid #a7f3d0;
 }
+.local-login-btn {
+  width: 100%;
+  font-size: 1.05rem;
+  min-height: 54px;
+}
+
+.auth-secondary-options {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #d8e6f5;
+}
+
+.auth-secondary-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.local-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  color: #075985;
+  background: #e0f2fe;
+  border: 1px solid #7dd3fc;
+}
