@@ -37,6 +37,7 @@
             <button id="analysisTabBtn" class="tab-btn active" type="button" role="tab" aria-selected="true">ניתוח פגישה</button>
             <button id="historyTabBtn" class="tab-btn" type="button" role="tab" aria-selected="false">היסטוריית פגישות</button>
             <button id="tasksTabBtn" class="tab-btn" type="button" role="tab" aria-selected="false">משימות</button>
+            <button id="calendarTabBtn" class="tab-btn" type="button" role="tab" aria-selected="false">יומן</button>
           </div>
           <div class="top-actions"><span id="userIndicator" class="muted"></span><button id="logoutBtn" class="ghost" type="button">החלפת משתמש / יציאה</button>
             <button id="topSaveMeetingBtn" class="ghost" type="button">שמור פגישה</button>
@@ -183,7 +184,47 @@
         <div id="tasksBoard" class="tasks-board"></div>
       </section>
 
+      <section id="calendarView" class="panel hidden" aria-labelledby="calendar-title">
+        <div class="calendar-header">
+          <div>
+            <h2 id="calendar-title">יומן</h2>
+            <p class="muted">תצוגת משימות לפי תאריך יעד ואירועים עתידיים לפגישות, הדרכות והטמעות.</p>
+          </div>
+          <button id="addCalendarEventBtn" type="button">הוסף אירוע</button>
+        </div>
+        <div class="calendar-dashboard">
+          <section class="calendar-main card">
+            <div class="calendar-toolbar">
+              <div class="calendar-nav">
+                <button id="calendarTodayBtn" class="ghost" type="button">היום</button>
+                <button id="calendarPrevBtn" class="ghost" type="button">הקודם</button>
+                <button id="calendarNextBtn" class="ghost" type="button">הבא</button>
+              </div>
+              <h3 id="calendarMonthLabel">חודש</h3>
+              <div class="calendar-view-toggle" role="group" aria-label="בחירת תצוגת יומן">
+                <button id="calendarMonthViewBtn" class="ghost active" type="button">חודש</button>
+                <button id="calendarWeekViewBtn" class="ghost" type="button">שבוע</button>
+              </div>
+            </div>
+            <div id="calendarGrid" class="calendar-grid" aria-live="polite"></div>
+          </section>
+          <aside class="calendar-sidebar">
+            <section class="card agenda-card">
+              <h3>היום ביומן</h3>
+              <div id="todayAgendaList" class="agenda-list"></div>
+            </section>
+            <section class="card agenda-card">
+              <h3>קרוב לביצוע</h3>
+              <div id="upcomingAgendaList" class="agenda-list"></div>
+            </section>
+          </aside>
+        </div>
+      </section>
+
     </main>
+    <div id="calendarEventOverlay" class="task-editor-overlay hidden" aria-hidden="true">
+      <aside id="calendarEventPanel" class="task-editor-panel" role="dialog" aria-modal="true" aria-labelledby="calendarEventTitle"></aside>
+    </div>
     <div id="taskEditorOverlay" class="task-editor-overlay hidden" aria-hidden="true">
       <aside id="taskEditorPanel" class="task-editor-panel" role="dialog" aria-modal="true" aria-labelledby="taskEditorTitle"></aside>
     </div>
