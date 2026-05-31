@@ -48,6 +48,32 @@
       </section>
 
       <section id="analysisView" class="view-stack">
+        <section id="mainDashboardOverview" class="panel dashboard-overview" aria-labelledby="dashboard-overview-title">
+          <div class="dashboard-overview-header">
+            <div>
+              <p class="eyebrow">Command Center</p>
+              <h2 id="dashboard-overview-title">דשבורד הטמעות</h2>
+              <p class="muted">תמונת מצב חיה ממשימות, פגישות ואירועים ביומן.</p>
+            </div>
+            <div id="dashboardEmptyState" class="dashboard-empty-state hidden">
+              <strong>אין עדיין נתונים להצגה</strong>
+              <span>נתח פגישה או הוסף משימה כדי להתחיל</span>
+            </div>
+          </div>
+          <div id="dashboardKpis" class="dashboard-kpis" aria-live="polite"></div>
+          <div class="dashboard-charts-grid">
+            <article class="dashboard-card chart-card"><h3>משימות לפי סטטוס</h3><div class="chart-wrap"><canvas id="statusChart"></canvas></div></article>
+            <article class="dashboard-card chart-card"><h3>משימות לפי לקוח</h3><div class="chart-wrap"><canvas id="clientChart"></canvas></div></article>
+            <article class="dashboard-card chart-card"><h3>אירועים קרובים לפי סוג</h3><div class="chart-wrap"><canvas id="eventTypeChart"></canvas></div></article>
+            <article class="dashboard-card chart-card"><h3>משימות שבוצעו ב־7 הימים האחרונים</h3><div class="chart-wrap"><canvas id="completedTasksChart"></canvas></div></article>
+          </div>
+          <div class="dashboard-panels-grid">
+            <article class="dashboard-card"><h3>אירועים קרובים</h3><div id="dashboardUpcomingEvents" class="dashboard-mini-list"></div></article>
+            <article class="dashboard-card"><h3>משימות דחופות</h3><div id="dashboardUrgentTasks" class="dashboard-mini-list"></div></article>
+            <article class="dashboard-card"><h3>לקוחות פעילים</h3><div id="dashboardActiveClients" class="dashboard-mini-list"></div></article>
+          </div>
+        </section>
+
         <section class="panel" aria-labelledby="input-title">
           <h2 id="input-title">קלט פגישה</h2>
           <form id="meeting-form" class="form-grid">
@@ -204,6 +230,7 @@
               <div class="calendar-view-toggle" role="group" aria-label="בחירת תצוגת יומן">
                 <button id="calendarMonthViewBtn" class="ghost active" type="button">חודש</button>
                 <button id="calendarWeekViewBtn" class="ghost" type="button">שבוע</button>
+                <button id="calendarDayViewBtn" class="ghost" type="button">יום</button>
               </div>
             </div>
             <div id="calendarGrid" class="calendar-grid" aria-live="polite"></div>
@@ -232,6 +259,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/mammoth/mammoth.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>
