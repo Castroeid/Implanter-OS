@@ -87,6 +87,18 @@ const calendarPrevBtn = document.getElementById("calendarPrevBtn");
 const calendarNextBtn = document.getElementById("calendarNextBtn");
 const calendarMonthViewBtn = document.getElementById("calendarMonthViewBtn");
 const calendarWeekViewBtn = document.getElementById("calendarWeekViewBtn");
+const calendarDayViewBtn = document.getElementById("calendarDayViewBtn");
+const dashboardKpis = document.getElementById("dashboardKpis");
+const dashboardEmptyState = document.getElementById("dashboardEmptyState");
+const dashboardUpcomingEvents = document.getElementById("dashboardUpcomingEvents");
+const dashboardUrgentTasks = document.getElementById("dashboardUrgentTasks");
+const dashboardActiveClients = document.getElementById("dashboardActiveClients");
+const dashboardChartCanvases = {
+  status: document.getElementById("statusChart"),
+  clients: document.getElementById("clientChart"),
+  events: document.getElementById("eventTypeChart"),
+  completed: document.getElementById("completedTasksChart")
+};
 const addCalendarEventBtn = document.getElementById("addCalendarEventBtn");
 const todayAgendaList = document.getElementById("todayAgendaList");
 const upcomingAgendaList = document.getElementById("upcomingAgendaList");
@@ -131,6 +143,7 @@ let previousFocusedElement = null;
 let calendarCursor = new Date();
 let calendarMode = "month";
 let editingCalendarEventId = null;
+const dashboardCharts = {};
 const CALENDAR_EVENT_TYPES = ["פגישת הטמעה", "הדרכה", "שיחת תמיכה", "פגישת המשך", "אחר"];
 const CALENDAR_EVENT_STATUSES = ["מתוכנן", "בוצע", "נדחה", "בוטל"];
 
@@ -249,6 +262,92 @@ function renderTasks() {
     .join("");
 }
 
+
+function countBy(items, getKey) {
+  return items.reduce((acc, item) => {
+    const key = getKey(item) || "לא משויך";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+}
+function dateInRange(iso, startIso, endIso) {
+  return Boolean(iso && iso >= startIso && iso <= endIso);
+}
+function getDashboardData() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayIso = toLocalIsoDate(today);
+  const weekEndIso = toLocalIsoDate(addDays(today, 7));
+  const weekStartIso = toLocalIsoDate(addDays(today, -6));
+  const tasks = getTasksStore();
+  const events = getCalendarEventsStore();
+  const meetings = getHistory();
+  const openTasks = tasks.filter((task) => task.status !== "בוצעה");
+  const urgentTasks = openTasks
+    .map((task) => ({ ...task, heat: getHeatInfo(task) }))
+    .filter((task) => task.priority === "גבוהה" || ["דחופה", "תקועה"].includes(task.heat.level) || isTaskOverdue(task, todayIso))
+    .sort((a, b) => (HEAT_WEIGHT[b.heat.level || "רגילה"] - HEAT_WEIGHT[a.heat.level || "רגילה"]) || (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31"));
+  const upcomingEvents = events
+    .filter((event) => event.status !== "בוטל" && event.date >= todayIso)
+    .sort((a, b) => `${a.date} ${a.startTime || "99:99"}`.localeCompare(`${b.date} ${b.startTime || "99:99"}`));
+  const eventsThisWeek = upcomingEvents.filter((event) => dateInRange(event.date, todayIso, weekEndIso));
+  const completedThisWeek = tasks.filter((task) => task.status === "בוצעה" && dateInRange((task.completedAt || task.updatedAt || "").slice(0, 10), weekStartIso, todayIso));
+  return { today, todayIso, weekStartIso, tasks, events, meetings, openTasks, urgentTasks, upcomingEvents, eventsThisWeek, completedThisWeek };
+}
+function topClientBuckets(tasks) {
+  const counts = countBy(tasks, (task) => (task.clientName || "לקוח לא זוהה").trim() || "לקוח לא זוהה");
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const top = sorted.slice(0, 5);
+  const rest = sorted.slice(5).reduce((sum, [, value]) => sum + value, 0);
+  if (rest) top.push(["אחר", rest]);
+  return top;
+}
+function dashboardMiniEmpty() {
+  return `<div class="dashboard-mini-empty"><strong>אין עדיין נתונים להצגה</strong><span>נתח פגישה או הוסף משימה כדי להתחיל</span></div>`;
+}
+function renderDashboardChart(key, config) {
+  if (!dashboardChartCanvases[key] || !window.Chart) return;
+  if (dashboardCharts[key]) dashboardCharts[key].destroy();
+  dashboardCharts[key] = new Chart(dashboardChartCanvases[key], config);
+}
+function renderMainDashboard() {
+  if (!dashboardKpis) return;
+  const data = getDashboardData();
+  const hasData = data.tasks.length || data.events.length || data.meetings.length;
+  dashboardEmptyState?.classList.toggle("hidden", Boolean(hasData));
+  dashboardKpis.innerHTML = [
+    ["משימות פתוחות", data.openTasks.length, "⌁"],
+    ["משימות דחופות", data.urgentTasks.length, "⚡"],
+    ["אירועים השבוע", data.eventsThisWeek.length, "◷"],
+    ["פגישות שנותחו", data.meetings.length, "◎"],
+    ["משימות שבוצעו השבוע", data.completedThisWeek.length, "✓"]
+  ].map(([label, value, icon]) => `<article class="dashboard-kpi"><span>${icon}</span><div><small>${label}</small><strong>${value}</strong></div></article>`).join("");
+
+  const statusCounts = TASK_STATUS_OPTIONS.map((status) => data.tasks.filter((task) => (task.status || "פתוחה") === status).length);
+  const clientBuckets = topClientBuckets(data.tasks);
+  const eventCounts = CALENDAR_EVENT_TYPES.map((type) => data.upcomingEvents.filter((event) => event.type === type).length);
+  const lastSevenDays = Array.from({ length: 7 }, (_, index) => addDays(data.today, index - 6));
+  const completedByDay = lastSevenDays.map((date) => {
+    const iso = toLocalIsoDate(date);
+    return data.tasks.filter((task) => task.status === "בוצעה" && (task.completedAt || task.updatedAt || "").slice(0, 10) === iso).length;
+  });
+  const palette = ["#1749b8", "#18b6e7", "#5b7cfa", "#f59e0b", "#16a34a", "#94a3b8"];
+  const baseOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", rtl: true, labels: { usePointStyle: true, boxWidth: 8 } } } };
+  renderDashboardChart("status", { type: "doughnut", data: { labels: TASK_STATUS_OPTIONS, datasets: [{ data: statusCounts, backgroundColor: palette, borderWidth: 0 }] }, options: baseOptions });
+  renderDashboardChart("clients", { type: "doughnut", data: { labels: clientBuckets.map(([label]) => label), datasets: [{ data: clientBuckets.map(([, value]) => value), backgroundColor: palette, borderWidth: 0 }] }, options: baseOptions });
+  renderDashboardChart("events", { type: "bar", data: { labels: CALENDAR_EVENT_TYPES, datasets: [{ label: "אירועים", data: eventCounts, backgroundColor: "rgba(24, 182, 231, .72)", borderRadius: 10 }] }, options: { ...baseOptions, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+  renderDashboardChart("completed", { type: "line", data: { labels: lastSevenDays.map((date) => date.toLocaleDateString("he-IL", { weekday: "short" })), datasets: [{ label: "בוצעו", data: completedByDay, borderColor: "#1749b8", backgroundColor: "rgba(23, 73, 184, .14)", tension: .35, fill: true, pointRadius: 4 }] }, options: { ...baseOptions, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+
+  dashboardUpcomingEvents.innerHTML = data.upcomingEvents.slice(0, 5).map((event) => `<button type="button" class="dashboard-list-item dashboard-open-event" data-id="${event.id}"><strong>${event.title || event.type}</strong><span>${event.date} ${event.startTime || ""} · ${event.clientName || "לקוח"} · ${event.type || "אחר"}</span></button>`).join("") || dashboardMiniEmpty();
+  dashboardUrgentTasks.innerHTML = data.urgentTasks.slice(0, 5).map((task) => `<button type="button" class="dashboard-list-item dashboard-open-task" data-id="${task.id}"><strong>${task.title || "משימה"}</strong><span>${task.clientName || "לקוח"} · ${task.status || "פתוחה"} · ${task.priority || "בינונית"}</span></button>`).join("") || dashboardMiniEmpty();
+  const clientActivity = Object.entries([...data.openTasks.map((task) => ({ clientName: task.clientName })), ...data.upcomingEvents.map((event) => ({ clientName: event.clientName }))].reduce((acc, item) => {
+    const key = (item.clientName || "לקוח לא זוהה").trim() || "לקוח לא זוהה";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  dashboardActiveClients.innerHTML = clientActivity.map(([client, value]) => `<div class="dashboard-list-item"><strong>${client}</strong><span>${value} משימות/אירועים פתוחים</span></div>`).join("") || dashboardMiniEmpty();
+}
+
 function renderAnalysis(data) {
   lastAnalysis = structuredClone(data);
   taskState = (data.tasks || []).map((task) => ({ ...task, checked: task.status === "בוצעה", status: task.status === "בוצעה" ? "בוצעה" : "פתוחה" }));
@@ -272,6 +371,7 @@ function renderAnalysis(data) {
   sectionsList.innerHTML = sections.map(([title, items]) => `<article class="section-block"><h4>${title}</h4><ul>${renderList(items)}</ul></article>`).join("");
   emptyState.classList.add("hidden");
   dashboard.classList.remove("hidden");
+  renderMainDashboard();
 }
 
 function getCurrentAuthMode() {
@@ -284,7 +384,7 @@ function getWorkspaceHistoryKey() {
 function getWorkspaceTasksKey() {
   return currentAuthMode === "local" && currentWorkspaceId ? `implanter_os_tasks_${currentWorkspaceId}` : TASKS_KEY;
 }
-function saveHistory(items) { if (!localStorageAvailable) return; localStorage.setItem(getWorkspaceHistoryKey(), JSON.stringify(items)); syncMeetingsToSupabase(items); }
+function saveHistory(items) { if (!localStorageAvailable) return; localStorage.setItem(getWorkspaceHistoryKey(), JSON.stringify(items)); syncMeetingsToSupabase(items); renderMainDashboard(); }
 function getHistory() { if (!localStorageAvailable) return []; try { return JSON.parse(localStorage.getItem(getWorkspaceHistoryKey()) || localStorage.getItem(HISTORY_KEY) || "[]"); } catch { return []; } }
 function saveOrUpdateMeeting() {
   if (!localStorageAvailable) return;
@@ -321,7 +421,7 @@ function saveOrUpdateMeeting() {
   showToast("הפגישה נשמרה בהצלחה");
 }
 function getTasksStore() { if (!localStorageAvailable) return []; try { return JSON.parse(localStorage.getItem(getWorkspaceTasksKey()) || localStorage.getItem(TASKS_KEY) || "[]"); } catch { return []; } }
-function saveTasksStore(items) { if (!localStorageAvailable) return; localStorage.setItem(getWorkspaceTasksKey(), JSON.stringify(items)); fetch(`${API_BASE_URL}/api/tasks/snapshot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tasks: items }) }).catch(() => null); syncTasksToSupabase(items); }
+function saveTasksStore(items) { if (!localStorageAvailable) return; localStorage.setItem(getWorkspaceTasksKey(), JSON.stringify(items)); fetch(`${API_BASE_URL}/api/tasks/snapshot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tasks: items }) }).catch(() => null); syncTasksToSupabase(items); renderMainDashboard(); }
 function normalizeTask(task, meetingInfo = {}) {
   const now = new Date().toISOString();
   return {
@@ -369,6 +469,7 @@ function getCalendarEventsStore() {
 function saveCalendarEventsStore(items) {
   if (!localStorageAvailable) return;
   localStorage.setItem(CALENDAR_EVENTS_KEY, JSON.stringify(items));
+  renderMainDashboard();
 }
 function normalizeCalendarEvent(event = {}) {
   const now = new Date().toISOString();
@@ -425,16 +526,63 @@ function renderCalendarItem(item, compact = true) {
   const classes = ["calendar-item", "calendar-event", calendarEventTypeClass(item.type), item.status === "בוטל" ? "cancelled" : ""].join(" ");
   return `<button type="button" class="${classes}" data-kind="event" data-id="${item.id}" title="${item.title || item.type}"><span class="item-prefix">${item.type || "אירוע"}</span><span>${item.clientName || "לקוח"}</span><strong>${compact ? (item.startTime || "") : (item.title || "אירוע")}</strong>${compact ? "" : `<small>${item.startTime || ""}${item.endTime ? `-${item.endTime}` : ""} | ${item.status || "מתוכנן"}</small>`}</button>`;
 }
+function renderDayCalendarView(dateIso, todayIso = toLocalIsoDate()) {
+  const selectedDate = parseIsoDate(dateIso) || new Date();
+  const items = calendarItemsForDate(dateIso);
+  const events = items.filter((item) => item.kind === "event");
+  const tasks = items.filter((item) => item.kind === "task");
+  const overdueTasks = getTasksStore()
+    .filter((task) => isTaskOverdue(task, todayIso))
+    .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""));
+  const hours = Array.from({ length: 11 }, (_, index) => `${pad(index + 8)}:00`);
+  const eventsByHour = events.reduce((acc, event) => {
+    const hour = String(event.startTime || "").slice(0, 2);
+    const key = hour ? `${hour}:00` : "ללא שעה";
+    (acc[key] = acc[key] || []).push(event);
+    return acc;
+  }, {});
+  const timedEvents = new Set(hours.flatMap((hour) => eventsByHour[hour] || []).map((event) => event.id));
+  const noTimeEvents = events.filter((event) => !timedEvents.has(event.id));
+  return `<section class="day-calendar" aria-label="תצוגת יום">
+    <header class="day-calendar-header">
+      <div><span class="eyebrow">תצוגת יום</span><h3>${selectedDate.toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</h3></div>
+      <span class="reminder-badge ${dateIso < todayIso ? "late" : ""}">${dateIso === todayIso ? "היום" : dateIso}</span>
+    </header>
+    <div class="day-calendar-layout">
+      <section class="day-panel"><h4>ציר זמן 08:00–18:00</h4><div class="hourly-timeline">
+        ${hours.map((hour) => `<div class="hour-row"><time>${hour}</time><div class="hour-content">${(eventsByHour[hour] || []).map((event) => renderCalendarItem(event, false)).join("") || `<span class="muted">אין אירועים</span>`}</div></div>`).join("")}
+        ${noTimeEvents.length ? `<div class="hour-row"><time>ללא שעה</time><div class="hour-content">${noTimeEvents.map((event) => renderCalendarItem(event, false)).join("")}</div></div>` : ""}
+      </div></section>
+      <aside class="day-side-panels">
+        <section class="day-panel"><h4>אירועים לאותו יום</h4>${events.length ? events.map((event) => renderCalendarItem(event, false)).join("") : `<p class="muted">אין אירועים ליום זה.</p>`}</section>
+        <section class="day-panel"><h4>משימות לאותו יום</h4>${tasks.length ? tasks.map((task) => renderCalendarItem(task, false)).join("") : `<p class="muted">אין משימות ליום זה.</p>`}</section>
+        <section class="day-panel overdue-day-panel"><h4>משימות באיחור</h4>${overdueTasks.length ? overdueTasks.slice(0, 8).map((task) => renderCalendarItem({ kind: "task", id: task.id, date: task.dueDate, title: task.title, clientName: task.clientName, priority: task.priority, status: task.status, overdue: true, raw: task }, false)).join("") : `<p class="muted">אין משימות באיחור.</p>`}</section>
+      </aside>
+    </div>
+  </section>`;
+}
 function renderCalendarView() {
   if (!calendarGrid) return;
   ensureCalendarEventsStore();
   const todayIso = toLocalIsoDate();
   const dayNames = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
   const monthName = calendarCursor.toLocaleDateString("he-IL", { month: "long", year: "numeric" });
-  calendarMonthLabel.textContent = calendarMode === "week" ? `שבוע ${toLocalIsoDate(startOfWeek(calendarCursor))}` : monthName;
+  const selectedIso = toLocalIsoDate(calendarCursor);
+  calendarMonthLabel.textContent = calendarMode === "day" ? calendarCursor.toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : (calendarMode === "week" ? `שבוע ${toLocalIsoDate(startOfWeek(calendarCursor))}` : monthName);
   calendarMonthViewBtn?.classList.toggle("active", calendarMode === "month");
   calendarWeekViewBtn?.classList.toggle("active", calendarMode === "week");
+  calendarDayViewBtn?.classList.toggle("active", calendarMode === "day");
+  if (calendarPrevBtn) calendarPrevBtn.textContent = calendarMode === "day" ? "יום קודם" : "הקודם";
+  if (calendarNextBtn) calendarNextBtn.textContent = calendarMode === "day" ? "יום הבא" : "הבא";
+  if (calendarMode === "day") {
+    calendarGrid.classList.remove("week-mode");
+    calendarGrid.classList.add("day-mode");
+    calendarGrid.innerHTML = renderDayCalendarView(selectedIso, todayIso);
+    renderAgendaPanels();
+    return;
+  }
   const cells = [];
+  calendarGrid.classList.remove("day-mode");
   if (calendarMode === "week") {
     const start = startOfWeek(calendarCursor);
     for (let i = 0; i < 7; i += 1) cells.push(addDays(start, i));
@@ -708,6 +856,19 @@ taskList?.addEventListener("change", (event) => {
   renderTasksBoard();
   renderCalendarView();
 });
+[dashboardUpcomingEvents, dashboardUrgentTasks].forEach((list) => list?.addEventListener("click", (event) => {
+  const taskButton = event.target.closest(".dashboard-open-task");
+  if (taskButton) {
+    const task = getTasksStore().find((item) => item.id === taskButton.dataset.id);
+    if (task) openTaskEditor(task);
+    return;
+  }
+  const eventButton = event.target.closest(".dashboard-open-event");
+  if (eventButton) {
+    const calendarEvent = getCalendarEventsStore().find((item) => item.id === eventButton.dataset.id);
+    if (calendarEvent) openCalendarEventEditor(calendarEvent);
+  }
+}));
 topSaveMeetingBtn?.addEventListener("click", saveOrUpdateMeeting);
 topNewMeetingBtn?.addEventListener("click", startNewMeeting);
 clearMeetingBtn?.addEventListener("click", clearMeeting);
@@ -770,6 +931,7 @@ historyList?.addEventListener("click", (event) => { const id = event.target?.dat
 
 try { localStorage.setItem("__implanter_test", "1"); localStorage.removeItem("__implanter_test"); } catch { localStorageAvailable = false; storageWarning.classList.remove("hidden"); }
 renderHistory();
+renderMainDashboard();
 
 addTasksBtn?.addEventListener("click", addCurrentAnalysisTasksToBoard);
 tasksTabBtn?.addEventListener("click", () => switchTab("tasks"));
@@ -823,10 +985,11 @@ taskEditorPanel?.addEventListener("input", (event) => {
 });
 addCalendarEventBtn?.addEventListener("click", () => openCalendarEventEditor());
 calendarTodayBtn?.addEventListener("click", () => { calendarCursor = new Date(); renderCalendarView(); });
-calendarPrevBtn?.addEventListener("click", () => { calendarCursor = calendarMode === "week" ? addDays(calendarCursor, -7) : new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() - 1, 1); renderCalendarView(); });
-calendarNextBtn?.addEventListener("click", () => { calendarCursor = calendarMode === "week" ? addDays(calendarCursor, 7) : new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() + 1, 1); renderCalendarView(); });
+calendarPrevBtn?.addEventListener("click", () => { calendarCursor = calendarMode === "day" ? addDays(calendarCursor, -1) : (calendarMode === "week" ? addDays(calendarCursor, -7) : new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() - 1, 1)); renderCalendarView(); });
+calendarNextBtn?.addEventListener("click", () => { calendarCursor = calendarMode === "day" ? addDays(calendarCursor, 1) : (calendarMode === "week" ? addDays(calendarCursor, 7) : new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() + 1, 1)); renderCalendarView(); });
 calendarMonthViewBtn?.addEventListener("click", () => { calendarMode = "month"; renderCalendarView(); });
 calendarWeekViewBtn?.addEventListener("click", () => { calendarMode = "week"; renderCalendarView(); });
+calendarDayViewBtn?.addEventListener("click", () => { calendarMode = "day"; renderCalendarView(); });
 calendarGrid?.addEventListener("click", (event) => {
   const item = event.target.closest(".calendar-item");
   if (!item) return;
@@ -851,14 +1014,18 @@ calendarGrid?.addEventListener("click", (event) => {
   const calendarEvent = getCalendarEventsStore().find((eventItem) => eventItem.id === id);
   if (calendarEvent) openCalendarEventEditor(calendarEvent);
 }));
-calendarEventOverlay?.addEventListener("click", (event) => {
-  if (event.target === calendarEventOverlay || event.target.classList.contains("close-calendar-event")) closeCalendarEventEditor();
+calendarEventPanel?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (event.target.classList.contains("close-calendar-event")) closeCalendarEventEditor();
   if (event.target.classList.contains("delete-calendar-event") && editingCalendarEventId) {
     saveCalendarEventsStore(getCalendarEventsStore().filter((item) => item.id !== editingCalendarEventId));
     closeCalendarEventEditor();
     renderCalendarView();
     showToast("האירוע נמחק מהיומן");
   }
+});
+calendarEventOverlay?.addEventListener("click", (event) => {
+  if (event.target === calendarEventOverlay) closeCalendarEventEditor();
 });
 calendarEventPanel?.addEventListener("submit", (event) => {
   const form = event.target.closest("#calendarEventForm");
