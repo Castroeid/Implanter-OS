@@ -22,7 +22,8 @@ const isSupabaseConfigured = !isPlaceholderSupabaseValue(SUPABASE_URL) && !isPla
 const supabaseClient = (window.supabase && isSupabaseConfigured)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
-const SUPABASE_CONFIG_ERROR_MESSAGE = "התחברות לא זמינה כרגע: חסרים פרטי Supabase.";
+const AUTH_UNAVAILABLE_MESSAGE = "התחברות חסומה או לא זמינה כרגע. ניתן להיכנס במצב מקומי.";
+const SUPABASE_CONFIG_ERROR_MESSAGE = AUTH_UNAVAILABLE_MESSAGE;
 let currentUser = null;
 let currentAuthMode = "supabase";
 let currentWorkspaceId = "";
@@ -738,31 +739,27 @@ function showAuthInfo(message) {
   authMessage.classList.remove("error", "success");
   authMessage.classList.add("info");
 }
-function mapLoginErrorToHebrew(errorMessage = "") {
-  const message = (errorMessage || "").toLowerCase();
-  if (message.includes("invalid login credentials")) return "האימייל או הסיסמה אינם נכונים.";
-  if (message.includes("email not confirmed")) return "יש לאשר את כתובת האימייל לפני התחברות.";
-  return `שגיאה: ${errorMessage}`;
+function mapLoginErrorToHebrew() {
+  return AUTH_UNAVAILABLE_MESSAGE;
 }
 function mapRegisterErrorToHebrew(errorMessage = "") {
   const message = (errorMessage || "").toLowerCase();
-  if (message.includes("user already registered") || message.includes("already been registered")) return "המשתמש כבר קיים. נסה להתחבר במקום להירשם.";
   if (message.includes("password should be at least 6 characters") || (message.includes("password") && message.includes("least 6"))) return "הסיסמה קצרה מדי. יש להזין לפחות 6 תווים.";
-  if (message.includes("signup is disabled") || message.includes("signups not allowed")) return "הרשמה אינה פעילה כרגע. יש להפעיל הרשמה ב-Supabase.";
-  return `שגיאה: ${errorMessage}`;
+  return AUTH_UNAVAILABLE_MESSAGE;
 }
 function setAuthUI(isAuthed) {
   authView?.classList.toggle("hidden", isAuthed);
   appView?.classList.toggle("hidden", !isAuthed);
   userIndicator.textContent = isAuthed && currentAuthMode === "local"
-    ? "מצב מקומי - הנתונים נשמרים בדפדפן הזה בלבד"
+    ? "מצב מקומי"
     : (isAuthed && currentUser ? `מחובר כ: ${currentUser.email || ""}` : "");
+  userIndicator.classList.toggle("local-mode-badge", Boolean(isAuthed && currentAuthMode === "local"));
   switchUserBtn?.classList.toggle("hidden", !isAuthed);
 }
 function ensureLocalWorkspaceId() {
   const existing = localStorage.getItem(LOCAL_WORKSPACE_KEY);
   if (existing) return existing;
-  const generated = `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const generated = crypto.randomUUID ? `local-${crypto.randomUUID()}` : `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   localStorage.setItem(LOCAL_WORKSPACE_KEY, generated);
   return generated;
 }
@@ -791,7 +788,22 @@ async function initAuth() {
     showAuthError(SUPABASE_CONFIG_ERROR_MESSAGE);
     return;
   }
-  const { data } = await supabaseClient.auth.getSession();
+  let sessionResult;
+  try {
+    sessionResult = await supabaseClient.auth.getSession();
+  } catch (error) {
+    console.log(`Session check blocked: ${error.message}`);
+    setAuthUI(false);
+    showAuthError(AUTH_UNAVAILABLE_MESSAGE);
+    renderHistory(); renderTasksBoard();
+    return;
+  }
+  if (currentAuthMode === "local") {
+    setAuthUI(true);
+    renderHistory(); renderTasksBoard();
+    return;
+  }
+  const { data } = sessionResult;
   currentUser = data.session?.user || null;
   if (currentUser) {
     currentAuthMode = "supabase";
@@ -803,6 +815,11 @@ async function initAuth() {
   setAuthUI(Boolean(currentUser));
   renderHistory(); renderTasksBoard();
   supabaseClient.auth.onAuthStateChange(async (_e, session) => {
+    if (currentAuthMode === "local") {
+      setAuthUI(true);
+      renderHistory(); renderTasksBoard();
+      return;
+    }
     currentUser = session?.user || null;
     if (currentUser) {
       currentAuthMode = "supabase";
@@ -827,7 +844,14 @@ authForm?.addEventListener("submit", async (event) => {
     showAuthError(SUPABASE_CONFIG_ERROR_MESSAGE);
     return;
   }
-  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  let loginResult;
+  try {
+    loginResult = await supabaseClient.auth.signInWithPassword({ email, password });
+  } catch (error) {
+    console.log(`Login blocked: ${error.message}`);
+    return showAuthError(AUTH_UNAVAILABLE_MESSAGE);
+  }
+  const { error } = loginResult;
   if (error) {
     console.log(`Login error: ${error.message}`);
     return showAuthError(mapLoginErrorToHebrew(error.message));
@@ -848,7 +872,14 @@ signupBtn?.addEventListener("click", async () => {
     showAuthError(SUPABASE_CONFIG_ERROR_MESSAGE);
     return;
   }
-  const { data, error } = await supabaseClient.auth.signUp({ email, password });
+  let signupResult;
+  try {
+    signupResult = await supabaseClient.auth.signUp({ email, password });
+  } catch (error) {
+    console.log(`Register blocked: ${error.message}`);
+    return showAuthError(AUTH_UNAVAILABLE_MESSAGE);
+  }
+  const { data, error } = signupResult;
   if (error) {
     console.log(`Register error: ${error.message}`);
     return showAuthError(mapRegisterErrorToHebrew(error.message));
@@ -867,7 +898,7 @@ localLoginBtn?.addEventListener("click", () => {
 logoutBtn?.addEventListener("click", async () => {
   if (currentAuthMode === "local") {
     currentAuthMode = "supabase";
-    localStorage.setItem(AUTH_MODE_KEY, "supabase");
+    if (localStorageAvailable) localStorage.setItem(AUTH_MODE_KEY, "supabase");
     setAuthUI(false);
     showAuthInfo("יצאת ממצב מקומי. הנתונים המקומיים נשמרו.");
     return;
@@ -879,7 +910,7 @@ logoutBtn?.addEventListener("click", async () => {
 switchUserBtn?.addEventListener("click", async () => {
   if (currentAuthMode === "local") {
     currentAuthMode = "supabase";
-    localStorage.setItem(AUTH_MODE_KEY, "supabase");
+    if (localStorageAvailable) localStorage.setItem(AUTH_MODE_KEY, "supabase");
     setAuthUI(false);
     showAuthInfo("בוצעה יציאה ממצב מקומי. הנתונים המקומיים לא נמחקו.");
     return;
