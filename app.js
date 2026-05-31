@@ -1,6 +1,7 @@
 const API_BASE_URL = "https://implanter-os.onrender.com";
 const HISTORY_KEY = "implanter_os_meeting_history_v1";
 const TASKS_KEY = "implanter_os_tasks";
+const CALENDAR_EVENTS_KEY = "implanter_os_calendar_events";
 const WEEKLY_SETTINGS_KEY = "implanter_os_weekly_email_settings_v1";
 const AUTH_MODE_KEY = "implanter_os_auth_mode";
 const LOCAL_WORKSPACE_KEY = "implanter_os_local_workspace_id";
@@ -74,9 +75,23 @@ const uploadBtn = document.getElementById("uploadBtn");
 const analysisTabBtn = document.getElementById("analysisTabBtn");
 const historyTabBtn = document.getElementById("historyTabBtn");
 const tasksTabBtn = document.getElementById("tasksTabBtn");
+const calendarTabBtn = document.getElementById("calendarTabBtn");
 const analysisView = document.getElementById("analysisView");
 const historyView = document.getElementById("historyView");
 const tasksView = document.getElementById("tasksView");
+const calendarView = document.getElementById("calendarView");
+const calendarGrid = document.getElementById("calendarGrid");
+const calendarMonthLabel = document.getElementById("calendarMonthLabel");
+const calendarTodayBtn = document.getElementById("calendarTodayBtn");
+const calendarPrevBtn = document.getElementById("calendarPrevBtn");
+const calendarNextBtn = document.getElementById("calendarNextBtn");
+const calendarMonthViewBtn = document.getElementById("calendarMonthViewBtn");
+const calendarWeekViewBtn = document.getElementById("calendarWeekViewBtn");
+const addCalendarEventBtn = document.getElementById("addCalendarEventBtn");
+const todayAgendaList = document.getElementById("todayAgendaList");
+const upcomingAgendaList = document.getElementById("upcomingAgendaList");
+const calendarEventOverlay = document.getElementById("calendarEventOverlay");
+const calendarEventPanel = document.getElementById("calendarEventPanel");
 const tasksBoard = document.getElementById("tasksBoard");
 const tasksKpis = document.getElementById("tasksKpis");
 const newTaskBtn = document.getElementById("newTaskBtn");
@@ -113,6 +128,11 @@ const taskEditorOverlay = document.getElementById("taskEditorOverlay");
 const taskEditorPanel = document.getElementById("taskEditorPanel");
 let editingTaskId = null;
 let previousFocusedElement = null;
+let calendarCursor = new Date();
+let calendarMode = "month";
+let editingCalendarEventId = null;
+const CALENDAR_EVENT_TYPES = ["פגישת הטמעה", "הדרכה", "שיחת תמיכה", "פגישת המשך", "אחר"];
+const CALENDAR_EVENT_STATUSES = ["מתוכנן", "בוצע", "נדחה", "בוטל"];
 
 function getMeetingSnapshot() {
   return {
@@ -322,6 +342,7 @@ function addCurrentAnalysisTasksToBoard() {
   const toAdd = taskState.map((task) => normalizeTask({ ...task, source: task.source || "מתוך ניתוח פגישה", sourceType: "AI" }, meetingInfo)).filter((task) => !existingKeys.has(`${task.meetingId || ""}__${task.title.trim()}`));
   saveTasksStore([...toAdd, ...existing]);
   renderTasksBoard();
+  renderCalendarView();
   showToast("המשימות נוספו ללוח המשימות");
 }
 function getWeeklySettings() {
@@ -334,6 +355,161 @@ function saveWeeklySettings(settings) {
   localStorage.setItem(WEEKLY_SETTINGS_KEY, JSON.stringify(settings));
   fetch(`${API_BASE_URL}/api/weekly-digest/settings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) }).catch(() => null);
   syncWeeklySettingsToSupabase(settings);
+}
+
+function ensureCalendarEventsStore() {
+  if (!localStorageAvailable) return;
+  if (!localStorage.getItem(CALENDAR_EVENTS_KEY)) localStorage.setItem(CALENDAR_EVENTS_KEY, "[]");
+}
+function getCalendarEventsStore() {
+  if (!localStorageAvailable) return [];
+  ensureCalendarEventsStore();
+  try { return JSON.parse(localStorage.getItem(CALENDAR_EVENTS_KEY) || "[]"); } catch { return []; }
+}
+function saveCalendarEventsStore(items) {
+  if (!localStorageAvailable) return;
+  localStorage.setItem(CALENDAR_EVENTS_KEY, JSON.stringify(items));
+}
+function normalizeCalendarEvent(event = {}) {
+  const now = new Date().toISOString();
+  const type = CALENDAR_EVENT_TYPES.includes(event.type) ? event.type : "פגישת הטמעה";
+  const status = CALENDAR_EVENT_STATUSES.includes(event.status) ? event.status : "מתוכנן";
+  return {
+    id: event.id || crypto.randomUUID(),
+    title: event.title || type,
+    clientName: event.clientName || "לקוח לא זוהה",
+    type,
+    date: event.date || new Date().toISOString().slice(0, 10),
+    startTime: event.startTime || "09:00",
+    endTime: event.endTime || "10:00",
+    location: event.location || "",
+    notes: event.notes || "",
+    status,
+    createdAt: event.createdAt || now,
+    updatedAt: now
+  };
+}
+const pad = (value) => String(value).padStart(2, "0");
+function toLocalIsoDate(date = new Date()) { return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`; }
+function parseIsoDate(iso) { const [y, m, d] = String(iso || "").split("-").map(Number); return y && m && d ? new Date(y, m - 1, d) : null; }
+function addDays(date, days) { const next = new Date(date); next.setDate(next.getDate() + days); return next; }
+function startOfWeek(date) { const next = new Date(date); next.setHours(0, 0, 0, 0); next.setDate(next.getDate() - next.getDay()); return next; }
+function isCompletedTask(task) { return task.status === "בוצעה"; }
+function isTaskOverdue(task, todayIso = toLocalIsoDate()) { return Boolean(task.dueDate && task.dueDate < todayIso && !isCompletedTask(task)); }
+function getDateReminderBadge(dateIso, todayIso = toLocalIsoDate()) {
+  if (!dateIso) return "";
+  const today = parseIsoDate(todayIso);
+  const target = parseIsoDate(dateIso);
+  if (!today || !target) return "";
+  const diff = Math.round((target - today) / DAY_MS);
+  if (diff < 0) return "באיחור";
+  if (diff === 0) return "היום";
+  if (diff === 1) return "מחר";
+  if (diff <= 7) return "השבוע";
+  return "";
+}
+function calendarEventTypeClass(type = "") {
+  return type === "הדרכה" ? "training" : type === "שיחת תמיכה" ? "support" : type === "פגישת המשך" ? "followup" : type === "אחר" ? "other" : "implementation";
+}
+function calendarItemsForDate(dateIso) {
+  const todayIso = toLocalIsoDate();
+  const tasks = getTasksStore().filter((task) => task.dueDate === dateIso).map((task) => ({ kind: "task", id: task.id, date: task.dueDate, title: task.title, clientName: task.clientName, priority: task.priority, status: task.status, overdue: isTaskOverdue(task, todayIso), raw: task }));
+  const events = getCalendarEventsStore().filter((event) => event.date === dateIso).map((event) => ({ kind: "event", id: event.id, date: event.date, title: event.title, clientName: event.clientName, type: event.type, status: event.status, startTime: event.startTime, raw: event }));
+  return [...events, ...tasks].sort((a, b) => (a.startTime || "99:99").localeCompare(b.startTime || "99:99"));
+}
+function renderCalendarItem(item, compact = true) {
+  if (item.kind === "task") {
+    const classes = ["calendar-item", "calendar-task", item.priority === "גבוהה" ? "high" : "", item.status === "בוצעה" ? "done" : "", item.overdue ? "overdue-item" : ""].filter(Boolean).join(" ");
+    return `<button type="button" class="${classes}" data-kind="task" data-id="${item.id}" title="${item.title || "משימה"}"><span class="item-prefix">משימה</span><span>${item.clientName || "לקוח"}</span><strong>${item.title || "משימה ללא כותרת"}</strong><small>${item.priority || "בינונית"} | ${item.status || "פתוחה"}</small>${item.overdue ? `<em>באיחור</em>` : ""}</button>`;
+  }
+  const classes = ["calendar-item", "calendar-event", calendarEventTypeClass(item.type), item.status === "בוטל" ? "cancelled" : ""].join(" ");
+  return `<button type="button" class="${classes}" data-kind="event" data-id="${item.id}" title="${item.title || item.type}"><span class="item-prefix">${item.type || "אירוע"}</span><span>${item.clientName || "לקוח"}</span><strong>${compact ? (item.startTime || "") : (item.title || "אירוע")}</strong>${compact ? "" : `<small>${item.startTime || ""}${item.endTime ? `-${item.endTime}` : ""} | ${item.status || "מתוכנן"}</small>`}</button>`;
+}
+function renderCalendarView() {
+  if (!calendarGrid) return;
+  ensureCalendarEventsStore();
+  const todayIso = toLocalIsoDate();
+  const dayNames = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
+  const monthName = calendarCursor.toLocaleDateString("he-IL", { month: "long", year: "numeric" });
+  calendarMonthLabel.textContent = calendarMode === "week" ? `שבוע ${toLocalIsoDate(startOfWeek(calendarCursor))}` : monthName;
+  calendarMonthViewBtn?.classList.toggle("active", calendarMode === "month");
+  calendarWeekViewBtn?.classList.toggle("active", calendarMode === "week");
+  const cells = [];
+  if (calendarMode === "week") {
+    const start = startOfWeek(calendarCursor);
+    for (let i = 0; i < 7; i += 1) cells.push(addDays(start, i));
+    calendarGrid.classList.add("week-mode");
+  } else {
+    const first = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth(), 1);
+    const gridStart = addDays(first, -first.getDay());
+    for (let i = 0; i < 42; i += 1) cells.push(addDays(gridStart, i));
+    calendarGrid.classList.remove("week-mode");
+  }
+  calendarGrid.innerHTML = dayNames.map((day) => `<div class="calendar-day-name">${day}</div>`).join("") + cells.map((date) => {
+    const iso = toLocalIsoDate(date);
+    const items = calendarItemsForDate(iso);
+    const rawBadge = getDateReminderBadge(iso, todayIso);
+    const badge = iso === todayIso ? "היום" : (items.some((item) => item.kind === "task" && item.overdue) ? "באיחור" : (items.length ? rawBadge : ""));
+    const isCurrentMonth = date.getMonth() === calendarCursor.getMonth();
+    return `<article class="calendar-cell ${iso === todayIso ? "today" : ""} ${!isCurrentMonth && calendarMode === "month" ? "outside" : ""}"><div class="calendar-cell-head"><strong>${date.getDate()}</strong>${badge ? `<span class="reminder-badge ${badge === "באיחור" ? "late" : ""}">${badge}</span>` : ""}</div><div class="calendar-cell-items">${items.slice(0, 5).map((item) => renderCalendarItem(item)).join("")}${items.length > 5 ? `<span class="more-items">+${items.length - 5} נוספים</span>` : ""}</div></article>`;
+  }).join("");
+  renderAgendaPanels();
+}
+function renderAgendaList(items, emptyText) {
+  if (!items.length) return `<p class="muted">${emptyText}</p>`;
+  return items.map((item) => `<div class="agenda-item ${item.kind === "task" && item.overdue ? "agenda-overdue" : ""}">${renderCalendarItem(item, false)}<span class="reminder-badge ${item.badge === "באיחור" ? "late" : ""}">${item.badge || "השבוע"}</span></div>`).join("");
+}
+function renderAgendaPanels() {
+  if (!todayAgendaList || !upcomingAgendaList) return;
+  const todayIso = toLocalIsoDate();
+  const todayItems = calendarItemsForDate(todayIso).map((item) => ({ ...item, badge: "היום" }));
+  const overdueTasks = getTasksStore().filter((task) => isTaskOverdue(task, todayIso)).sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || "")).map((task) => ({ kind: "task", id: task.id, date: task.dueDate, title: task.title, clientName: task.clientName, priority: task.priority, status: task.status, overdue: true, raw: task, badge: "באיחור" }));
+  todayAgendaList.innerHTML = renderAgendaList([...overdueTasks, ...todayItems], "לא נקבעו משימות או פגישות להיום");
+  const upcoming = [];
+  for (let i = 1; i <= 7; i += 1) {
+    const iso = toLocalIsoDate(addDays(new Date(), i));
+    calendarItemsForDate(iso).forEach((item) => upcoming.push({ ...item, badge: getDateReminderBadge(iso, todayIso) }));
+  }
+  upcomingAgendaList.innerHTML = renderAgendaList(upcoming, "אין משימות או אירועים בשבעת הימים הקרובים");
+}
+function openCalendarEventEditor(event = null) {
+  if (!calendarEventOverlay || !calendarEventPanel) return;
+  previousFocusedElement = document.activeElement;
+  editingCalendarEventId = event?.id || null;
+  const item = normalizeCalendarEvent(event || {});
+  calendarEventPanel.innerHTML = `<form id="calendarEventForm" class="task-editor-form" dir="rtl"><div class="task-editor-header"><h3 id="calendarEventTitle">${editingCalendarEventId ? "עריכת אירוע" : "הוסף אירוע"}</h3><p class="muted">פגישות, הדרכות, שיחות תמיכה והטמעות עתידיות.</p></div><div class="task-editor-body"><label>כותרת<input name="title" value="${item.title}" required /></label><label>חברה / לקוח<input name="clientName" value="${item.clientName}" required /></label><label>סוג אירוע<select name="type">${CALENDAR_EVENT_TYPES.map((type) => `<option ${item.type === type ? "selected" : ""}>${type}</option>`).join("")}</select></label><label>תאריך<input name="date" type="date" value="${item.date}" required /></label><label>שעת התחלה<input name="startTime" type="time" value="${item.startTime}" /></label><label>שעת סיום<input name="endTime" type="time" value="${item.endTime}" /></label><label>מיקום / קישור<input name="location" value="${item.location}" /></label><label>סטטוס<select name="status">${CALENDAR_EVENT_STATUSES.map((status) => `<option ${item.status === status ? "selected" : ""}>${status}</option>`).join("")}</select></label><label>הערות<textarea name="notes" rows="4">${item.notes}</textarea></label></div><div class="task-editor-footer"><button type="submit">שמור אירוע</button><button type="button" class="ghost close-calendar-event">ביטול</button>${editingCalendarEventId ? `<button type="button" class="danger delete-calendar-event">מחק אירוע</button>` : ""}</div></form>`;
+  calendarEventOverlay.classList.remove("hidden");
+  requestAnimationFrame(() => calendarEventOverlay.classList.add("open"));
+  calendarEventOverlay.setAttribute("aria-hidden", "false");
+  calendarEventPanel.querySelector("input[name='title']")?.focus();
+}
+function closeCalendarEventEditor() {
+  calendarEventOverlay?.classList.add("hidden");
+  calendarEventOverlay?.classList.remove("open");
+  calendarEventOverlay?.setAttribute("aria-hidden", "true");
+  editingCalendarEventId = null;
+  if (previousFocusedElement) previousFocusedElement.focus();
+}
+function saveCalendarEventFromForm(form) {
+  const fd = new FormData(form);
+  const events = getCalendarEventsStore();
+  const existing = events.find((event) => event.id === editingCalendarEventId);
+  const nextEvent = normalizeCalendarEvent({
+    ...(existing || {}),
+    title: String(fd.get("title") || "").trim(),
+    clientName: String(fd.get("clientName") || "").trim(),
+    type: String(fd.get("type") || "פגישת הטמעה"),
+    date: String(fd.get("date") || ""),
+    startTime: String(fd.get("startTime") || ""),
+    endTime: String(fd.get("endTime") || ""),
+    location: String(fd.get("location") || "").trim(),
+    notes: String(fd.get("notes") || "").trim(),
+    status: String(fd.get("status") || "מתוכנן")
+  });
+  saveCalendarEventsStore([nextEvent, ...events.filter((event) => event.id !== nextEvent.id)].sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`)));
+  closeCalendarEventEditor();
+  renderCalendarView();
+  showToast("האירוע נשמר ביומן");
 }
 function renderManualTaskForm() {
   manualTaskFormWrap.innerHTML = `<form id="manualTaskForm" class="manual-task-form card"><label>חברה/לקוח<input name="clientName" required /></label><label>כותרת משימה<input name="title" required /></label><label class="full-width">תיאור<textarea name="description" rows="3"></textarea></label><label>עדיפות<select name="priority"><option>נמוכה</option><option selected>בינונית</option><option>גבוהה</option></select></label><label>סטטוס<select name="status"><option>פתוחה</option><option>בתהליך</option><option>ממתין ללקוח</option><option>ממתין לפיתוח</option><option>בוצעה</option></select></label><label>אחראי<input name="owner" value="אני" /></label><label>תאריך יעד<input name="dueDate" type="date" /></label><label class="full-width">הערות<textarea name="notes" rows="2"></textarea></label><div class="action-row full-width"><button type="submit">שמור משימה</button><button type="button" id="cancelManualTaskBtn" class="ghost">בטל</button></div></form>`;
@@ -399,7 +575,7 @@ function openTaskEditor(task) {
   requestAnimationFrame(() => taskEditorOverlay.classList.add("open"));
   taskEditorOverlay.setAttribute("aria-hidden", "false");
 }
-function updateBoardTask(id, patch) { const tasks=getTasksStore(); const idx=tasks.findIndex((t)=>t.id===id); if (idx<0) return; const prevStatus = tasks[idx].status; const nextStatus = Object.prototype.hasOwnProperty.call(patch, "status") ? patch.status : prevStatus; const now = new Date().toISOString(); const completedAt = prevStatus !== "בוצעה" && nextStatus === "בוצעה" ? now : (prevStatus === "בוצעה" && nextStatus !== "בוצעה" ? null : tasks[idx].completedAt || null); tasks[idx]={...tasks[idx],...patch,completedAt,updatedAt:now}; saveTasksStore(tasks); renderTasksBoard(); if (Object.prototype.hasOwnProperty.call(patch, "status") && patch.status !== prevStatus) showToast("סטטוס המשימה עודכן"); else showToast("המשימה עודכנה"); }
+function updateBoardTask(id, patch) { const tasks=getTasksStore(); const idx=tasks.findIndex((t)=>t.id===id); if (idx<0) return; const prevStatus = tasks[idx].status; const nextStatus = Object.prototype.hasOwnProperty.call(patch, "status") ? patch.status : prevStatus; const now = new Date().toISOString(); const completedAt = prevStatus !== "בוצעה" && nextStatus === "בוצעה" ? now : (prevStatus === "בוצעה" && nextStatus !== "בוצעה" ? null : tasks[idx].completedAt || null); tasks[idx]={...tasks[idx],...patch,completedAt,updatedAt:now}; saveTasksStore(tasks); renderTasksBoard(); renderCalendarView(); if (Object.prototype.hasOwnProperty.call(patch, "status") && patch.status !== prevStatus) showToast("סטטוס המשימה עודכן"); else showToast("המשימה עודכנה"); }
 function renderHistory() { /* unchanged-ish */
   const clientFilter = (historyClientFilter.value || "").trim();
   const typeFilter = historyTypeFilter.value || "";
@@ -451,7 +627,7 @@ function startNewMeeting() {
   showToast("נפתחה פגישה חדשה");
 }
 function deleteHistoryItem(id) { if (!confirm("למחוק את הפגישה מההיסטוריה?")) return; saveHistory(getHistory().filter((item) => item.id !== id)); renderHistory(); }
-function switchTab(tab) { const analysisActive = tab === "analysis"; const historyActive = tab === "history"; const tasksActive = tab === "tasks"; analysisTabBtn.classList.toggle("active", analysisActive); historyTabBtn.classList.toggle("active", historyActive); tasksTabBtn.classList.toggle("active", tasksActive); analysisTabBtn.setAttribute("aria-selected", String(analysisActive)); historyTabBtn.setAttribute("aria-selected", String(historyActive)); tasksTabBtn.setAttribute("aria-selected", String(tasksActive)); analysisView.classList.toggle("hidden", !analysisActive); historyView.classList.toggle("hidden", !historyActive); tasksView.classList.toggle("hidden", !tasksActive); if (tasksActive) renderTasksBoard(); }
+function switchTab(tab) { const analysisActive = tab === "analysis"; const historyActive = tab === "history"; const tasksActive = tab === "tasks"; const calendarActive = tab === "calendar"; analysisTabBtn.classList.toggle("active", analysisActive); historyTabBtn.classList.toggle("active", historyActive); tasksTabBtn.classList.toggle("active", tasksActive); calendarTabBtn?.classList.toggle("active", calendarActive); analysisTabBtn.setAttribute("aria-selected", String(analysisActive)); historyTabBtn.setAttribute("aria-selected", String(historyActive)); tasksTabBtn.setAttribute("aria-selected", String(tasksActive)); calendarTabBtn?.setAttribute("aria-selected", String(calendarActive)); analysisView.classList.toggle("hidden", !analysisActive); historyView.classList.toggle("hidden", !historyActive); tasksView.classList.toggle("hidden", !tasksActive); calendarView?.classList.toggle("hidden", !calendarActive); if (tasksActive) renderTasksBoard(); if (calendarActive) renderCalendarView(); }
 
 function exportAnalysisPdf() {
   if (!lastAnalysis) { showToast("אין ניתוח פעיל לייצוא"); return; }
@@ -530,6 +706,7 @@ taskList?.addEventListener("change", (event) => {
   renderTasks();
   saveTasksStore(taskState.map((task) => normalizeTask({ ...task, sourceType: "AI", source: task.source || "מתוך ניתוח פגישה" })));
   renderTasksBoard();
+  renderCalendarView();
 });
 topSaveMeetingBtn?.addEventListener("click", saveOrUpdateMeeting);
 topNewMeetingBtn?.addEventListener("click", startNewMeeting);
@@ -596,6 +773,7 @@ renderHistory();
 
 addTasksBtn?.addEventListener("click", addCurrentAnalysisTasksToBoard);
 tasksTabBtn?.addEventListener("click", () => switchTab("tasks"));
+calendarTabBtn?.addEventListener("click", () => switchTab("calendar"));
 [tasksSearchFilter, tasksClientFilter, tasksOwnerFilter, tasksStatusFilter, tasksPriorityFilter, tasksDateFromFilter, tasksDateToFilter].forEach((el)=>el?.addEventListener("input", renderTasksBoard));
 const smartFiltersEl = document.getElementById("smartFilters");
 if (smartFiltersEl) {
@@ -613,10 +791,10 @@ tasksBoard?.addEventListener("change", (event) => { const card = event.target.cl
 tasksBoard?.addEventListener("click", (event) => {
   if (event.target.classList.contains("mark-done")) return updateBoardTask(event.target.dataset.id, { status: "בוצעה" });
   if (event.target.classList.contains("postpone")) return updateBoardTask(event.target.dataset.id, { dueDate: new Date(Date.now() + DAY_MS).toISOString().slice(0, 10) });
-  const card = event.target.closest(".task-card"); if (!card) return; const id = card.dataset.id; const task = getTasksStore().find((t)=>t.id===id); if (event.target.classList.contains("delete-task")) { saveTasksStore(getTasksStore().filter((t)=>t.id!==id)); if (editingTaskId===id) editingTaskId=null; renderTasksBoard(); showToast("המשימה נמחקה"); } if (event.target.classList.contains("edit-task") && task) openTaskEditor(task); if (event.target.classList.contains("open-task-meeting") && task?.meetingId) loadHistoryAnalysis(task.meetingId); });
+  const card = event.target.closest(".task-card"); if (!card) return; const id = card.dataset.id; const task = getTasksStore().find((t)=>t.id===id); if (event.target.classList.contains("delete-task")) { saveTasksStore(getTasksStore().filter((t)=>t.id!==id)); if (editingTaskId===id) editingTaskId=null; renderTasksBoard(); renderCalendarView(); showToast("המשימה נמחקה"); } if (event.target.classList.contains("edit-task") && task) openTaskEditor(task); if (event.target.classList.contains("open-task-meeting") && task?.meetingId) loadHistoryAnalysis(task.meetingId); });
 taskEditorOverlay?.addEventListener("click", (event) => {
   if (event.target === taskEditorOverlay || event.target.classList.contains("close-task-editor")) closeTaskEditor();
-  if (event.target.classList.contains("delete-task-editor") && editingTaskId) { saveTasksStore(getTasksStore().filter((t)=>t.id!==editingTaskId)); closeTaskEditor(); renderTasksBoard(); showToast("המשימה נמחקה"); }
+  if (event.target.classList.contains("delete-task-editor") && editingTaskId) { saveTasksStore(getTasksStore().filter((t)=>t.id!==editingTaskId)); closeTaskEditor(); renderTasksBoard(); renderCalendarView(); showToast("המשימה נמחקה"); }
 });
 taskEditorPanel?.addEventListener("submit", (event) => {
   const form = event.target.closest("#taskEditorForm");
@@ -627,6 +805,7 @@ taskEditorPanel?.addEventListener("submit", (event) => {
   closeTaskEditor();
 });
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && calendarEventOverlay && !calendarEventOverlay.classList.contains("hidden")) return closeCalendarEventEditor();
   if (!taskEditorOverlay || taskEditorOverlay.classList.contains("hidden")) return;
   if (event.key === "Escape") return closeTaskEditor();
   if (event.key !== "Tab") return;
@@ -642,6 +821,51 @@ taskEditorPanel?.addEventListener("input", (event) => {
   event.target.style.height = "auto";
   event.target.style.height = `${event.target.scrollHeight}px`;
 });
+addCalendarEventBtn?.addEventListener("click", () => openCalendarEventEditor());
+calendarTodayBtn?.addEventListener("click", () => { calendarCursor = new Date(); renderCalendarView(); });
+calendarPrevBtn?.addEventListener("click", () => { calendarCursor = calendarMode === "week" ? addDays(calendarCursor, -7) : new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() - 1, 1); renderCalendarView(); });
+calendarNextBtn?.addEventListener("click", () => { calendarCursor = calendarMode === "week" ? addDays(calendarCursor, 7) : new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() + 1, 1); renderCalendarView(); });
+calendarMonthViewBtn?.addEventListener("click", () => { calendarMode = "month"; renderCalendarView(); });
+calendarWeekViewBtn?.addEventListener("click", () => { calendarMode = "week"; renderCalendarView(); });
+calendarGrid?.addEventListener("click", (event) => {
+  const item = event.target.closest(".calendar-item");
+  if (!item) return;
+  const id = item.dataset.id;
+  if (item.dataset.kind === "task") {
+    const task = getTasksStore().find((taskItem) => taskItem.id === id);
+    if (task) openTaskEditor(task);
+    return;
+  }
+  const calendarEvent = getCalendarEventsStore().find((eventItem) => eventItem.id === id);
+  if (calendarEvent) openCalendarEventEditor(calendarEvent);
+});
+[todayAgendaList, upcomingAgendaList].forEach((list) => list?.addEventListener("click", (event) => {
+  const item = event.target.closest(".calendar-item");
+  if (!item) return;
+  const id = item.dataset.id;
+  if (item.dataset.kind === "task") {
+    const task = getTasksStore().find((taskItem) => taskItem.id === id);
+    if (task) openTaskEditor(task);
+    return;
+  }
+  const calendarEvent = getCalendarEventsStore().find((eventItem) => eventItem.id === id);
+  if (calendarEvent) openCalendarEventEditor(calendarEvent);
+}));
+calendarEventOverlay?.addEventListener("click", (event) => {
+  if (event.target === calendarEventOverlay || event.target.classList.contains("close-calendar-event")) closeCalendarEventEditor();
+  if (event.target.classList.contains("delete-calendar-event") && editingCalendarEventId) {
+    saveCalendarEventsStore(getCalendarEventsStore().filter((item) => item.id !== editingCalendarEventId));
+    closeCalendarEventEditor();
+    renderCalendarView();
+    showToast("האירוע נמחק מהיומן");
+  }
+});
+calendarEventPanel?.addEventListener("submit", (event) => {
+  const form = event.target.closest("#calendarEventForm");
+  if (!form) return;
+  event.preventDefault();
+  saveCalendarEventFromForm(form);
+});
 newTaskBtn?.addEventListener("click", renderManualTaskForm);
 manualTaskFormWrap?.addEventListener("click", (event) => { if (event.target.id === "cancelManualTaskBtn") manualTaskFormWrap.classList.add("hidden"); });
 manualTaskFormWrap?.addEventListener("submit", (event) => {
@@ -653,6 +877,7 @@ manualTaskFormWrap?.addEventListener("submit", (event) => {
   saveTasksStore([task, ...getTasksStore()]);
   manualTaskFormWrap.classList.add("hidden");
   renderTasksBoard();
+  renderCalendarView();
   showToast("המשימה נשמרה");
 });
 async function sendWeeklyTasksReportNow() {
@@ -685,7 +910,9 @@ if (weeklyEmailDay) weeklyEmailDay.value = weekly.sendDay;
 if (weeklyEmailTime) weeklyEmailTime.value = weekly.sendTime;
 if (weeklyEmailEnabled) weeklyEmailEnabled.checked = weekly.enabled;
 sendWeeklyReportNowBtn?.addEventListener("click", sendWeeklyTasksReportNow);
+ensureCalendarEventsStore();
 renderTasksBoard();
+renderCalendarView();
 
 async function ensureProfile() {
   if (!supabaseClient || !currentUser) return;
@@ -780,7 +1007,7 @@ async function initAuth() {
   if (currentAuthMode === "local") {
     currentWorkspaceId = ensureLocalWorkspaceId();
     setAuthUI(true);
-    renderHistory(); renderTasksBoard();
+    renderHistory(); renderTasksBoard(); renderCalendarView();
     return;
   }
   if (!supabaseClient) {
@@ -795,12 +1022,12 @@ async function initAuth() {
     console.log(`Session check blocked: ${error.message}`);
     setAuthUI(false);
     showAuthError(AUTH_UNAVAILABLE_MESSAGE);
-    renderHistory(); renderTasksBoard();
+    renderHistory(); renderTasksBoard(); renderCalendarView();
     return;
   }
   if (currentAuthMode === "local") {
     setAuthUI(true);
-    renderHistory(); renderTasksBoard();
+    renderHistory(); renderTasksBoard(); renderCalendarView();
     return;
   }
   const { data } = sessionResult;
@@ -813,11 +1040,11 @@ async function initAuth() {
     await pullSupabaseData();
   }
   setAuthUI(Boolean(currentUser));
-  renderHistory(); renderTasksBoard();
+  renderHistory(); renderTasksBoard(); renderCalendarView();
   supabaseClient.auth.onAuthStateChange(async (_e, session) => {
     if (currentAuthMode === "local") {
       setAuthUI(true);
-      renderHistory(); renderTasksBoard();
+      renderHistory(); renderTasksBoard(); renderCalendarView();
       return;
     }
     currentUser = session?.user || null;
@@ -829,7 +1056,7 @@ async function initAuth() {
       console.log("Auth success");
     }
     setAuthUI(Boolean(currentUser));
-    renderHistory(); renderTasksBoard();
+    renderHistory(); renderTasksBoard(); renderCalendarView();
   });
 }
 authForm?.addEventListener("submit", async (event) => {
@@ -926,7 +1153,10 @@ function exportBackup() {
     authMode: currentAuthMode,
     workspaceId: currentWorkspaceId || null,
     history: getHistory(),
+    meetings: getHistory(),
     tasks: getTasksStore(),
+    calendarEvents: getCalendarEventsStore(),
+    settings: getWeeklySettings(),
     weekly: getWeeklySettings()
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -941,10 +1171,11 @@ async function importBackupFile(file) {
   if (!file || !localStorageAvailable) return;
   const raw = await file.text();
   const data = JSON.parse(raw);
-  if (Array.isArray(data.history)) saveHistory(data.history);
+  if (Array.isArray(data.history) || Array.isArray(data.meetings)) saveHistory(Array.isArray(data.history) ? data.history : data.meetings);
   if (Array.isArray(data.tasks)) saveTasksStore(data.tasks);
-  if (data.weekly) saveWeeklySettings(data.weekly);
-  renderHistory(); renderTasksBoard();
+  if (Array.isArray(data.calendarEvents)) saveCalendarEventsStore(data.calendarEvents.map((event) => normalizeCalendarEvent(event)));
+  if (data.settings || data.weekly) saveWeeklySettings(data.settings || data.weekly);
+  renderHistory(); renderTasksBoard(); renderCalendarView();
   showToast("הגיבוי יובא בהצלחה");
 }
 exportBackupBtn?.addEventListener("click", exportBackup);
