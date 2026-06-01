@@ -1,8 +1,10 @@
 const API_BASE_URL = "https://implanter-os.onrender.com";
-const HISTORY_KEY = "implanter_os_meeting_history_v1";
+const HISTORY_KEY = "implanter_os_meetings";
 const TASKS_KEY = "implanter_os_tasks";
 const CALENDAR_EVENTS_KEY = "implanter_os_calendar_events";
-const WEEKLY_SETTINGS_KEY = "implanter_os_weekly_email_settings_v1";
+const WEEKLY_SETTINGS_KEY = "implanter_os_settings";
+const LEGACY_HISTORY_KEY = "implanter_os_meeting_history_v1";
+const LEGACY_WEEKLY_SETTINGS_KEY = "implanter_os_weekly_email_settings_v1";
 const AUTH_MODE_KEY = "implanter_os_auth_mode";
 const LOCAL_WORKSPACE_KEY = "implanter_os_local_workspace_id";
 
@@ -117,6 +119,8 @@ const sendWeeklyReportNowBtn = document.getElementById("sendWeeklyReportNowBtn")
 const exportBackupBtn = document.getElementById("exportBackupBtn");
 const importBackupBtn = document.getElementById("importBackupBtn");
 const backupFileInput = document.getElementById("backupFileInput");
+const localStorageDiagnosticsBtn = document.getElementById("localStorageDiagnosticsBtn");
+const localStorageDiagnosticsMessage = document.getElementById("localStorageDiagnosticsMessage");
 const addTasksBtn = document.getElementById("addTasksBtn");
 const tasksSearchFilter = document.getElementById("tasksSearchFilter");
 const tasksClientFilter = document.getElementById("tasksClientFilter");
@@ -130,6 +134,7 @@ const historyClientFilter = document.getElementById("historyClientFilter");
 const historyTypeFilter = document.getElementById("historyTypeFilter");
 const historyDateFilter = document.getElementById("historyDateFilter");
 const storageWarning = document.getElementById("storageWarning");
+const localStorageWarning = document.getElementById("localStorageWarning");
 
 let lastAnalysis = null;
 let lastPayload = null;
@@ -378,14 +383,40 @@ function getCurrentAuthMode() {
   if (!localStorageAvailable) return "supabase";
   return localStorage.getItem(AUTH_MODE_KEY) || "supabase";
 }
-function getWorkspaceHistoryKey() {
-  return currentAuthMode === "local" && currentWorkspaceId ? `implanter_os_meetings_${currentWorkspaceId}` : HISTORY_KEY;
+function showLocalStorageWarning() {
+  const message = "הדפדפן חוסם שמירה מקומית. הנתונים לא יישמרו לאחר רענון או סגירה.";
+  [localStorageWarning, storageWarning].forEach((el) => {
+    if (!el) return;
+    el.textContent = message;
+    el.classList.remove("hidden");
+  });
 }
-function getWorkspaceTasksKey() {
-  return currentAuthMode === "local" && currentWorkspaceId ? `implanter_os_tasks_${currentWorkspaceId}` : TASKS_KEY;
+function testLocalStorageAvailability() {
+  const testKey = "__implanter_os_local_storage_test__";
+  try {
+    localStorage.setItem(testKey, "ok");
+    const ok = localStorage.getItem(testKey) === "ok";
+    localStorage.removeItem(testKey);
+    localStorageAvailable = ok;
+  } catch {
+    localStorageAvailable = false;
+  }
+  console.log("localStorage available:", localStorageAvailable);
+  if (!localStorageAvailable) showLocalStorageWarning();
+  return localStorageAvailable;
 }
-function saveHistory(items) { if (!localStorageAvailable) return; localStorage.setItem(getWorkspaceHistoryKey(), JSON.stringify(items)); syncMeetingsToSupabase(items); renderMainDashboard(); }
-function getHistory() { if (!localStorageAvailable) return []; try { return JSON.parse(localStorage.getItem(getWorkspaceHistoryKey()) || localStorage.getItem(HISTORY_KEY) || "[]"); } catch { return []; } }
+function readJsonArray(key, legacyKey = "") {
+  if (!localStorageAvailable) return [];
+  try {
+    const raw = localStorage.getItem(key) || (legacyKey ? localStorage.getItem(legacyKey) : "") || "[]";
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+function saveHistory(items) { if (!localStorageAvailable) return; localStorage.setItem(HISTORY_KEY, JSON.stringify(items)); syncMeetingsToSupabase(items); renderMainDashboard(); }
+function getHistory() { return readJsonArray(HISTORY_KEY, LEGACY_HISTORY_KEY); }
 function saveOrUpdateMeeting() {
   if (!localStorageAvailable) return;
   const clientNameInput = document.getElementById("clientName")?.value?.trim() || "";
@@ -420,8 +451,20 @@ function saveOrUpdateMeeting() {
   renderHistory();
   showToast("הפגישה נשמרה בהצלחה");
 }
-function getTasksStore() { if (!localStorageAvailable) return []; try { return JSON.parse(localStorage.getItem(getWorkspaceTasksKey()) || localStorage.getItem(TASKS_KEY) || "[]"); } catch { return []; } }
-function saveTasksStore(items) { if (!localStorageAvailable) return; localStorage.setItem(getWorkspaceTasksKey(), JSON.stringify(items)); fetch(`${API_BASE_URL}/api/tasks/snapshot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tasks: items }) }).catch(() => null); syncTasksToSupabase(items); renderMainDashboard(); }
+function getTasksStore() {
+  const tasks = readJsonArray(TASKS_KEY);
+  console.log("loaded tasks count:", tasks.length);
+  return tasks;
+}
+function saveTasksStore(items) {
+  if (!localStorageAvailable) return false;
+  localStorage.setItem(TASKS_KEY, JSON.stringify(items));
+  console.log("saved tasks count:", items.length);
+  fetch(`${API_BASE_URL}/api/tasks/snapshot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tasks: items }) }).catch(() => null);
+  syncTasksToSupabase(items);
+  renderMainDashboard();
+  return true;
+}
 function normalizeTask(task, meetingInfo = {}) {
   const now = new Date().toISOString();
   return {
@@ -445,10 +488,43 @@ function addCurrentAnalysisTasksToBoard() {
   renderCalendarView();
   showToast("המשימות נוספו ללוח המשימות");
 }
+function saveManualTask(task) {
+  console.log("saving task:", task.id);
+  const tasks = getTasksStore();
+  tasks.push(task);
+  const writeSucceeded = saveTasksStore(tasks);
+  const savedTasks = getTasksStore();
+  const saved = writeSucceeded && savedTasks.some((item) => item.id === task.id) && savedTasks.length >= tasks.length;
+  console.log("saved tasks count:", savedTasks.length);
+  if (saved) {
+    showToast("המשימה נשמרה בהצלחה");
+    return true;
+  }
+  showToast("שגיאה: המשימה לא נשמרה בדפדפן.");
+  return false;
+}
+function runLocalStorageDiagnostics() {
+  const key = "__implanter_os_storage_diagnostics__";
+  const payload = { ok: true, checkedAt: new Date().toISOString() };
+  try {
+    localStorage.setItem(key, JSON.stringify(payload));
+    const saved = JSON.parse(localStorage.getItem(key) || "{}");
+    localStorage.removeItem(key);
+    const success = saved.ok === payload.ok && Boolean(saved.checkedAt);
+    const message = success ? "שמירה מקומית תקינה." : "שגיאה בבדיקת שמירה מקומית.";
+    if (localStorageDiagnosticsMessage) localStorageDiagnosticsMessage.textContent = message;
+    showToast(message);
+  } catch {
+    const message = "שגיאה בבדיקת שמירה מקומית.";
+    if (localStorageDiagnosticsMessage) localStorageDiagnosticsMessage.textContent = message;
+    showToast(message);
+    showLocalStorageWarning();
+  }
+}
 function getWeeklySettings() {
   const fallback = { recipientEmail: "liron@mida.co.il", sendDay: "0", sendTime: "08:30", enabled: true };
   if (!localStorageAvailable) return fallback;
-  try { return { ...fallback, ...JSON.parse(localStorage.getItem(WEEKLY_SETTINGS_KEY) || "{}") }; } catch { return fallback; }
+  try { return { ...fallback, ...JSON.parse(localStorage.getItem(WEEKLY_SETTINGS_KEY) || localStorage.getItem(LEGACY_WEEKLY_SETTINGS_KEY) || "{}") }; } catch { return fallback; }
 }
 function saveWeeklySettings(settings) {
   if (!localStorageAvailable) return;
@@ -852,7 +928,15 @@ taskList?.addEventListener("change", (event) => {
   }
 
   renderTasks();
-  saveTasksStore(taskState.map((task) => normalizeTask({ ...task, sourceType: "AI", source: task.source || "מתוך ניתוח פגישה" })));
+  const meetingInfo = { clientName: document.getElementById("clientName")?.value?.trim() || lastAnalysis?.meetingMetadata?.clientName || "לקוח לא זוהה", meetingDate: document.getElementById("meetingDate")?.value || lastAnalysis?.meetingMetadata?.meetingDate || "", meetingId: currentMeetingId };
+  const existingTasks = getTasksStore();
+  const existingByKey = new Map(existingTasks.map((task) => [`${task.meetingId || ""}__${(task.title || "").trim()}`, task]));
+  const updatedAnalysisTasks = taskState.map((task) => {
+    const key = `${meetingInfo.meetingId || ""}__${(task.title || "").trim()}`;
+    return normalizeTask({ ...(existingByKey.get(key) || {}), ...task, sourceType: "AI", source: task.source || "מתוך ניתוח פגישה" }, meetingInfo);
+  });
+  const updatedKeys = new Set(updatedAnalysisTasks.map((task) => `${task.meetingId || ""}__${(task.title || "").trim()}`));
+  saveTasksStore([...updatedAnalysisTasks, ...existingTasks.filter((task) => !updatedKeys.has(`${task.meetingId || ""}__${(task.title || "").trim()}`))]);
   renderTasksBoard();
   renderCalendarView();
 });
@@ -929,7 +1013,8 @@ historyTabBtn?.addEventListener("click", () => switchTab("history"));
 historyList?.addEventListener("click", (event) => { const id = event.target?.dataset?.id; if (!id) return; if (event.target.classList.contains("open-history")) loadHistoryAnalysis(id); if (event.target.classList.contains("delete-history")) deleteHistoryItem(id); });
 [historyClientFilter, historyTypeFilter, historyDateFilter].forEach((el) => el?.addEventListener("input", renderHistory));
 
-try { localStorage.setItem("__implanter_test", "1"); localStorage.removeItem("__implanter_test"); } catch { localStorageAvailable = false; storageWarning.classList.remove("hidden"); }
+testLocalStorageAvailability();
+console.log("tasks key:", TASKS_KEY);
 renderHistory();
 renderMainDashboard();
 
@@ -1041,11 +1126,10 @@ manualTaskFormWrap?.addEventListener("submit", (event) => {
   const task = normalizeTask({
     clientName: fd.get("clientName"), title: fd.get("title"), description: fd.get("description"), priority: fd.get("priority"), status: fd.get("status"), owner: fd.get("owner"), dueDate: fd.get("dueDate"), notes: fd.get("notes"), sourceType: "Manual", source: "ידני"
   });
-  saveTasksStore([task, ...getTasksStore()]);
-  manualTaskFormWrap.classList.add("hidden");
+  const saved = saveManualTask(task);
+  if (saved) manualTaskFormWrap.classList.add("hidden");
   renderTasksBoard();
   renderCalendarView();
-  showToast("המשימה נשמרה");
 });
 async function sendWeeklyTasksReportNow() {
   const settings = getWeeklySettings();
@@ -1077,6 +1161,7 @@ if (weeklyEmailDay) weeklyEmailDay.value = weekly.sendDay;
 if (weeklyEmailTime) weeklyEmailTime.value = weekly.sendTime;
 if (weeklyEmailEnabled) weeklyEmailEnabled.checked = weekly.enabled;
 sendWeeklyReportNowBtn?.addEventListener("click", sendWeeklyTasksReportNow);
+localStorageDiagnosticsBtn?.addEventListener("click", runLocalStorageDiagnostics);
 ensureCalendarEventsStore();
 renderTasksBoard();
 renderCalendarView();
@@ -1151,10 +1236,15 @@ function setAuthUI(isAuthed) {
   switchUserBtn?.classList.toggle("hidden", !isAuthed);
 }
 function ensureLocalWorkspaceId() {
+  if (!localStorageAvailable) return "";
   const existing = localStorage.getItem(LOCAL_WORKSPACE_KEY);
-  if (existing) return existing;
+  if (existing) {
+    console.log("workspaceId:", existing);
+    return existing;
+  }
   const generated = crypto.randomUUID ? `local-${crypto.randomUUID()}` : `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   localStorage.setItem(LOCAL_WORKSPACE_KEY, generated);
+  console.log("workspaceId:", generated);
   return generated;
 }
 function enterLocalMode() {
@@ -1170,9 +1260,10 @@ function enterLocalMode() {
 }
 async function initAuth() {
   console.log("Auth initialized");
+  if (localStorageAvailable) currentWorkspaceId = ensureLocalWorkspaceId();
   currentAuthMode = getCurrentAuthMode();
   if (currentAuthMode === "local") {
-    currentWorkspaceId = ensureLocalWorkspaceId();
+    currentWorkspaceId = currentWorkspaceId || ensureLocalWorkspaceId();
     setAuthUI(true);
     renderHistory(); renderTasksBoard(); renderCalendarView();
     return;

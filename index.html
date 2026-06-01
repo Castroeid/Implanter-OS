@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div id="localStorageWarning" class="storage-warning hidden" role="alert">הדפדפן חוסם שמירה מקומית. הנתונים לא יישמרו לאחר רענון או סגירה.</div>
     <section id="authView" class="auth-screen panel">
       <h2>התחברות למערכת</h2>
       <form id="authForm" class="auth-form">
@@ -195,7 +196,7 @@
       <section id="tasksView" class="panel hidden" aria-labelledby="tasks-title">
         <div class="tasks-header"><h2 id="tasks-title">משימות</h2><button id="newTaskBtn" type="button">משימה חדשה</button></div>
         <div id="tasksKpis" class="tasks-kpis"></div>
-        <div class="weekly-settings card"><h3>דוח משימות שבועי</h3><div class="settings-grid"><label>אימייל יעד<input id="weeklyEmailRecipient" type="email" /></label><label>יום שליחה<select id="weeklyEmailDay"><option value="0">יום ראשון</option><option value="1">יום שני</option><option value="2">יום שלישי</option><option value="3">יום רביעי</option><option value="4">יום חמישי</option><option value="5">יום שישי</option><option value="6">שבת</option></select></label><label>שעת שליחה<input id="weeklyEmailTime" type="time" /></label><label class="toggle-row">הפעלה<input id="weeklyEmailEnabled" type="checkbox" /></label><button id="saveWeeklySettingsBtn" class="ghost" type="button">שמור הגדרות דוח</button><button id="sendWeeklyReportNowBtn" type="button">שלח דוח עכשיו</button><button id="exportBackupBtn" class="ghost" type="button">ייצוא גיבוי</button><button id="importBackupBtn" class="ghost" type="button">ייבוא גיבוי</button><input id="backupFileInput" type="file" accept="application/json" hidden /></div><p class="muted weekly-note">הדוח השבועי האוטומטי דורש שמירת משימות בצד שרת או שירות תזמון פעיל. כרגע ניתן לשלוח דוח ידנית מהמערכת.</p></div>
+        <div class="weekly-settings card"><h3>דוח משימות שבועי</h3><div class="settings-grid"><label>אימייל יעד<input id="weeklyEmailRecipient" type="email" /></label><label>יום שליחה<select id="weeklyEmailDay"><option value="0">יום ראשון</option><option value="1">יום שני</option><option value="2">יום שלישי</option><option value="3">יום רביעי</option><option value="4">יום חמישי</option><option value="5">יום שישי</option><option value="6">שבת</option></select></label><label>שעת שליחה<input id="weeklyEmailTime" type="time" /></label><label class="toggle-row">הפעלה<input id="weeklyEmailEnabled" type="checkbox" /></label><button id="saveWeeklySettingsBtn" class="ghost" type="button">שמור הגדרות דוח</button><button id="sendWeeklyReportNowBtn" type="button">שלח דוח עכשיו</button><button id="exportBackupBtn" class="ghost" type="button">ייצוא גיבוי</button><button id="importBackupBtn" class="ghost" type="button">ייבוא גיבוי</button><button id="localStorageDiagnosticsBtn" class="ghost" type="button">בדיקת שמירה מקומית</button><input id="backupFileInput" type="file" accept="application/json" hidden /></div><p id="localStorageDiagnosticsMessage" class="muted diagnostics-message" role="status"></p><p class="muted weekly-note">הדוח השבועי האוטומטי דורש שמירת משימות בצד שרת או שירות תזמון פעיל. כרגע ניתן לשלוח דוח ידנית מהמערכת.</p></div>
         <div id="manualTaskFormWrap" class="manual-task-wrap hidden"></div>
         <div id="smartFilters" class="smart-filters"></div>
         <div class="tasks-filters">

@@ -532,3 +532,16 @@ button:hover{filter:brightness(1.03)}
 .calendar-grid.day-mode{display:block}.day-calendar{display:grid;gap:.9rem}.day-calendar-header{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;border:1px solid #d6e4f5;border-radius:16px;background:linear-gradient(135deg,#f8fbff,#eef6ff);padding:1rem}.day-calendar-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:1rem;align-items:start}.day-panel{border:1px solid #d7e4f3;border-radius:16px;background:#fff;padding:.85rem;display:grid;gap:.55rem}.day-panel h4{margin:0;color:#123a69}.hourly-timeline{display:grid;gap:.45rem}.hour-row{display:grid;grid-template-columns:72px minmax(0,1fr);gap:.65rem;align-items:stretch}.hour-row time{font-weight:900;color:#1749b8;background:#edf5ff;border:1px solid #d7e6f7;border-radius:12px;display:grid;place-items:center;min-height:48px}.hour-content{min-height:48px;border:1px dashed #d4e2f1;border-radius:12px;background:#fbfdff;padding:.45rem;display:grid;gap:.4rem;align-content:center}.day-side-panels{display:grid;gap:.8rem}.overdue-day-panel{border-color:#ffcaca;background:#fffafa}
 @media (max-width:1200px){.dashboard-kpis{grid-template-columns:repeat(3,minmax(150px,1fr))}.dashboard-charts-grid{grid-template-columns:repeat(2,minmax(220px,1fr))}.dashboard-panels-grid,.day-calendar-layout{grid-template-columns:1fr}}
 @media (max-width:720px){.dashboard-kpis,.dashboard-charts-grid,.dashboard-panels-grid{grid-template-columns:1fr}.dashboard-empty-state{min-width:0;width:100%}.hour-row{grid-template-columns:1fr}.hour-row time{justify-content:start;padding-inline:.75rem}.chart-card{min-height:240px}}
+.storage-warning {
+  margin: 0 0 1rem;
+  padding: .85rem 1rem;
+  border: 1px solid #f2b8b5;
+  border-radius: 14px;
+  background: #fff2f1;
+  color: #9b1c1c;
+  font-weight: 700;
+}
+.diagnostics-message {
+  min-height: 1.4rem;
+  margin: .2rem 0 0;
+}
